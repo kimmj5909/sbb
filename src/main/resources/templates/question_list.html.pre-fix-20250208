@@ -1,0 +1,312 @@
+<html layout:decorate="~{layout}">
+<div layout:fragment="content" class="container my-3">
+	<!-- 답변 팝업 모달 -->
+	<div class="modal fade" id="repliesModal" tabindex="-1" aria-labelledby="repliesModalLabel" aria-hidden="true">
+		<div class="modal-dialog modal-lg">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title" id="repliesModalLabel"
+						th:text="${question != null ? question.subject : '답변 및 댓글 보기'}">답변 및 댓글 보기</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body" id="repliesModalBody">
+					<!--여기에 답변과 댓글이 표시됩니다.-->
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+					<a id="goToDetailBtn" href="#" class="btn btn-primary">상세보기</a>
+				</div>
+			</div>
+		</div>
+	</div>
+	<!--본문-->
+	<div class="row my-3">
+		<div class="col-6">
+			<a th:href="@{/question/create}" class="btn btn-primary">질문 등록하기</a>
+			<a th:href="@{/question/excel/download(kw=${kw})}" class="btn btn-success ms-2">엑셀 다운로드</a>
+		</div>
+		<div class="col-6 d-flex gap-2 justify-content-end">
+			<!-- 게시글 표시 개수 선택 -->
+			<div class="input-group w-auto">
+				<span class="input-group-text" id="pageSizeLabel">표시</span>
+				<select class="form-select" id="pageSize" aria-labelledby="pageSizeLabel">
+					<option th:each="option : ${pageSizeOptions}" th:value="${option}" th:selected="${option == currentSize}"
+						th:text="${option} + '개'"></option>
+				</select>
+			</div>
+			<!-- 검색창 -->
+			<div class="input-group">
+				<input type="text" id="search_kw" class="form-control" th:value="${kw}">
+				<button class="btn btn-outline-secondary" type="button" id="btn_search">찾기</button>
+			</div>
+		</div>
+	</div>
+	<table class="table">
+		<thead class="table-dark">
+			<tr class="text-center">
+				<th>번호</th>
+				<th syte="width:50%">제목</th>
+				<th>작성자</th>
+				<th>작성일시</th>
+			</tr>
+		</thead>
+		<tbody>
+			<!--tr th:each="question, loop : ${questionList}"-->
+			<tr class="text-center" th:each="question, loop : ${paging}">
+				<td th:text="${paging.getTotalElements - (paging.number * paging.size) - loop.index}"></td>
+				<!-- loop.count는 questionList를 th:each로 반복할 때 현재 순서 표시 -->
+				<td class="text-start">
+					<a th:href="@{|/question/detail/${question.id}|}" th:text="${question.subject}"></a>
+					<a href="javascript:void(0);" class="text-danger small ms-2 reply-link"
+						th:if="${question.totalRepliesCount > 0}" th:text="${question.totalRepliesCount}"
+						th:data-id="${question.id}" th:data-title="${question.subject}"></a>
+
+					<!--	<a th:href="@{|/question/detail/${question.id}|}" th:text="${question.subject}"></a>
+						<span class = "text-danger samll ms-2" th:if="${#lists.size(question.answerList) > 0}" 
+							th:text="${#lists.size(question.answerList)}">
+						</span>
+						-->
+				</td>
+				<td>
+					<span th:if="${question.author != null}" th:text="${question.author.username}"></span>
+				</td>
+				<td th:text="${#temporals.format(question.createDate, 'yyyy-MM-dd HH:mm')}"></td>
+
+				<!--			<td th:text="${question.subject}"></td>
+				<td th:text="${question.createDate}"></td>
+	-->
+			</tr>
+		</tbody>
+	</table>
+	<!-- 페이징 처리-->
+	<div th:if="${!paging.isEmpty()}">
+		<ul class="pagination justify-content-center">
+			<li class="page-item" th:classappend="${!paging.hasPrevious} ? 'disabled'">
+				<a class="page-link" href="javascript:void(0)" th:if="${paging.hasPrevious}" th:attr="data-page=${paging.number-1}">
+					<span>이전</span>
+				</a>
+				<span class="page-link" th:if="${!paging.hasPrevious}">이전</span>
+			</li>
+			<li th:each="page: ${#numbers.sequence(0, paging.totalPages-1)}"
+				th:if="${page >= paging.number-5 and page <= paging.number+5}"
+				th:classappend="${page == paging.number} ? 'active'" class="page-item">
+				<span th:if="${page == paging.number}" class="page-link" th:text="${page + 1}"></span>
+				<a th:if="${page != paging.number}" th:text="${page + 1}" class="page-link" href="javascript:void(0)" th:attr="data-page=${page}"></a>
+			</li>
+			<li class="page-item" th:classappend="${!paging.hasNext} ? 'disabled'">
+				<a class="page-link" href="javascript:void(0)" th:if="${paging.hasNext}" th:attr="data-page=${paging.number+1}">
+					<span>다음</span>
+				</a>
+				<span class="page-link" th:if="${!paging.hasNext}">다음</span>
+			</li>
+		</ul>
+	</div>
+	<!-- 페이징 처리 끝 -->
+	<!-- 페이징/검색/사이즈를 함께 전송하는 폼 -->
+	<form th:action="@{/question/list}" method="get" id="searchForm">
+		<input type="hidden" id="kw" name="kw" th:value="${kw}">
+		<input type="hidden" id="page" name="page" th:value="${currentPage}">
+		<input type="hidden" id="size" name="size" th:value="${currentSize}">
+	</form>
+</div>
+
+<script layout:fragment="script" type='text/javascript'>
+	// 페이지 이동 링크 클릭 시 목표 페이지를 히든필드에 지정하고 제출
+	const paginationLinks = document.querySelectorAll('.page-link[data-page]');
+	const pageInput = document.getElementById('page');
+	const sizeInput = document.getElementById('size');
+	const pageSizeSelect = document.getElementById('pageSize');
+	Array.from(paginationLinks).forEach(function (element) {
+		element.addEventListener('click', function () {
+			if (this.closest('.disabled')) {
+				return;
+			}
+			const targetPage = Number(this.dataset.page);
+			if (Number.isNaN(targetPage) || targetPage < 0) {
+				return;
+			}
+			const currentPage = Number(pageInput.value);
+			if (!Number.isNaN(currentPage) && targetPage === currentPage) {
+				return;
+			}
+			pageInput.value = targetPage;
+			document.getElementById('searchForm').submit();
+		});
+	});
+
+	// 검색 버튼은 키워드 적용 후 첫 페이지부터 재조회
+	const btn_search = document.getElementById("btn_search");
+	btn_search.addEventListener('click', function () {
+		document.getElementById('kw').value = document.getElementById('search_kw').value;
+		document.getElementById('page').value = 0;
+		document.getElementById('searchForm').submit();
+	});
+
+	// 게시글 수 선택이 바뀌면 첫 페이지부터 다시 로딩
+	if (pageSizeSelect) {
+		pageSizeSelect.addEventListener('change', function () {
+			const selectedSize = Number(this.value);
+			if (!Number.isNaN(selectedSize) && sizeInput) {
+				sizeInput.value = selectedSize;
+				pageInput.value = 0;
+				document.getElementById('searchForm').submit();
+			}
+		});
+	}
+
+	document.addEventListener('DOMContentLoaded', function () {
+		const replyLinks = document.querySelectorAll('.reply-link');
+		console.log("Found reply links : ", replyLinks.length);
+
+		replyLinks.forEach(link => {
+			link.addEventListener('click', function () {
+				const questionId = this.getAttribute('data-id');
+				if (questionId) {
+					console.log('Reply link clicked, questionId:', questionId);
+					showRepliesPopup(questionId);
+				}
+			});
+		});
+
+		// 모달 요소 존재 확인
+		const modalElement = document.getElementById('repliesModal');
+		console.log('Modal element exists:', !!modalElement);
+
+		const modalBodyElement = document.getElementById('repliesModalBody');
+		console.log('Modal body element exists:', !!modalBodyElement);
+
+		// Bootstrap 존재 확인
+		console.log('Bootstrap exists:', typeof bootstrap !== 'undefined');
+	});
+
+	function showRepliesPopup(questionId) {
+		console.log('showRepliesPopup called with questionId:', questionId);
+
+		// 모달 본문 요소 확인
+		const modalBody = document.getElementById('repliesModalBody');
+		if (!modalBody) {
+			console.error('Modal body element not found (repliesModalBody)');
+			alert('모달 본문 요소를 찾을 수 없습니다');
+			return;
+		}
+
+		// 모달 초기화
+		modalBody.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+
+		// 상세보기 링크 요소 확인
+		const detailBtn = document.getElementById('goToDetailBtn');
+		if (detailBtn) {
+			detailBtn.href = `/question/detail/${questionId}`;
+		}
+
+		// Bootstrap 모달 표시
+		try {
+			const modalElement = document.getElementById('repliesModal');
+			if (!modalElement) {
+				console.error('Modal element not found (repliesModal)');
+				alert('모달 요소를 찾을 수 없습니다');
+				return;
+			}
+
+			if (typeof bootstrap === 'undefined') {
+				console.error('Bootstrap is not defined');
+				alert('부트스트랩 라이브러리가 로드되지 않았습니다');
+				return;
+			}
+
+			const myModal = new bootstrap.Modal(modalElement);
+			myModal.show();
+
+			console.log('Modal should be visible now');
+		} catch (e) {
+			console.error('Error showing modal:', e);
+			alert('모달을 표시하는 중 오류가 발생했습니다: ' + e.message);
+		}
+
+		fetch(`/question/replies/${questionId}`)
+			.then(response => {
+				if (!response.ok) {
+					throw new Error('Network response was not ok: ' + response.status);
+				}
+				return response.json();
+			})
+			.then(data => {
+				console.log('Received data:', data);
+
+				// modalBody 요소가 여전히 존재하는지 다시 확인
+				const modalBody = document.getElementById('repliesModalBody');
+				if (!modalBody) {
+					console.error('Modal body element not found after fetch');
+					return;
+				}
+
+				modalBody.innerHTML = '';
+
+				if (data.length === 0) {
+					modalBody.innerHTML = '<p class="text-center">답변이 없습니다.</p>';
+					return;
+				}
+
+				data.forEach((item, index) => {
+					if (item.type === 'answer') {
+						const answerDiv = document.createElement('div');
+						answerDiv.className = 'card mb-3';
+
+						const answerContent = `
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span>답변 #${index + 1}</span>
+                            <span class="badge bg-secondary">${item.author} | ${new Date(item.createDate).toLocaleString()}</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="card-text">${item.content}</div>
+                        </div>
+                    `;
+						answerDiv.innerHTML = answerContent;
+
+						// 댓글이 있는 경우
+						if (item.comments && item.comments.length > 0) {
+							const commentsDiv = document.createElement('div');
+							commentsDiv.className = 'list-group list-group-flush';
+
+							item.comments.forEach(comment => {
+								const commentItem = document.createElement('div');
+								commentItem.className = 'list-group-item';
+								commentItem.innerHTML = `
+                                <div class="d-flex justify-content-between">
+                                    <div>${comment.content}</div>
+                                    <small class="text-muted">${comment.author} | ${new Date(comment.createDate).toLocaleString()}</small>
+                                </div>
+                            `;
+								commentsDiv.appendChild(commentItem);
+							});
+							answerDiv.appendChild(commentsDiv);
+						}
+						modalBody.appendChild(answerDiv);
+					}
+				});
+			})
+			.catch(error => {
+				console.error('Error fetching replies:', error);
+				const modalBody = document.getElementById('repliesModalBody');
+				if (modalBody) {
+					modalBody.innerHTML = '<p class="text-center text-danger">답변을 불러오는 중 오류가 발생했습니다: ' + error.message + '</p>';
+				}
+			});
+		const clickedLink = document.querySelector('.reply-link[data-id="${questionId}"]');
+		let questionTitle = "답변 및 댓글 보기";
+
+		if (clickedLink) {
+			const titleData = clickedLink.getAttribute('data-title');
+			if (titleData) {
+				questionTitle = titleData;
+			}
+		}
+
+		const modalTitleElement = document.getElementById('repliesModalLabel');
+		if (modalTitleElement) {
+			modalTitleElement.textContent = questionTitle;
+		}
+	}
+</script>
+
+</html>

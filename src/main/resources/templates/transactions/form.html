@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head>
+    <title>가계부 - 거래 내역 추가/수정</title>
+</head>
+<body>
+    <section>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 th:text="${transaction.id == null ? '거래 내역 추가' : '거래 내역 수정'}">거래 내역 추가</h2>
+            <a href="/transactions" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> 목록으로
+            </a>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form th:action="@{/transactions}" th:object="${transaction}" method="post">
+                    <input type="hidden" th:field="*{id}" />
+                    
+                    <div class="mb-3">
+                        <label for="type" class="form-label">거래 유형</label>
+                        <select id="type" class="form-select" th:field="*{type}" required>
+                            <option value="">-- 유형 선택 --</option>
+                            <option th:each="typeOption : ${types}" 
+                                    th:value="${typeOption}" 
+                                    th:text="${typeOption.name() == 'INCOME' ? '수입' : '지출'}">수입</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="category" class="form-label">카테고리</label>
+                        <select id="category" class="form-select" th:field="*{category}" required>
+                            <option value="">-- 카테고리 선택 --</option>
+                            <optgroup label="수입">
+                                <option th:each="category : ${incomeCategories}" 
+                                        th:value="${category.id}" 
+                                        th:text="${category.name}">급여</option>
+                            </optgroup>
+                            <optgroup label="지출">
+                                <option th:each="category : ${expenseCategories}" 
+                                        th:value="${category.id}" 
+                                        th:text="${category.name}">식비</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="title" class="form-label">제목</label>
+                        <input type="text" class="form-control" id="title" th:field="*{title}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="amount" class="form-label">금액</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="amount" th:field="*{amount}" min="0" step="1000" required>
+                            <span class="input-group-text">원</span>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="transactionDate" class="form-label">거래 일시</label>
+                        <input type="datetime-local" class="form-control" id="transactionDate" 
+                               th:field="*{transactionDate}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label">메모</label>
+                        <textarea class="form-control" id="description" th:field="*{description}" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="text-end">
+                        <a href="/transactions" class="btn btn-secondary me-2">취소</a>
+                        <button type="submit" class="btn btn-primary">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </section>
+    
+    <script>

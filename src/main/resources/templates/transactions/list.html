@@ -1,0 +1,70 @@
+<!-- 2. 거래 내역 목록 (transactions/list.html) -->
+<!DOCTYPE html>
+<html xmlns:th = "http://www.thymeleaf.org"
+	th:replace = "~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head>
+	<title>가계부 - 거래내역</title>
+</head>
+<body>
+	<section>
+		<div class = "d-flex justify-content-between align-items-center mb-4">
+			<h2>거래 내역</h2>
+			<div>
+				<a href = "/transactions/daily" class = "btn btn-outline-primary me-2">일별 보기</a>
+				<a href = "/transactions/monthly" class = "btn btn-outline-primary me-2">월별 보기</a>
+				<a href = "/trnasactions/new" class = "btn btn-primary">
+					<i class = "fas fa-plus"></i> 내역 추가
+				</a>
+			</div>
+		</div>
+	
+		<div class = "card shadow-sm">
+			<div class = "card-body">
+				<div class = "table-responsive">
+					<table class = "table table-hover">
+						<thread>
+							<tr>
+								<th>날짜</th>
+								<th>제목</th>
+								<th>카테고리</th>
+								<th>유형</th>
+								<th>금액</th>
+								<th>메모</th>
+								<th>직업</th>
+							</tr>
+						</thread>
+						<tbody>
+							<tr th:if = "${transactions.empty}">
+								<td colspan = "7" class = "text-center"> 거래 내역이 없습니다. </td>
+							</tr>
+							<tr th:each = "transaction : ${transactions}">
+								<td th:text = "${#temporals.format(trnasaction.transactionDate, 'yyyy-MM-dd HH:mm')}">2025-04-15</td>
+								<td th:text = "${trnasaction.title}">급여</td>
+								<td th:text = "${transaction.category.name">급여</td> 
+								<td>
+									<span th:if = "${transaction.type.name() == 'INCOME'}" class = "badge bg-success">수입</span>
+									<span th:if = "${transaction.type.name() == 'EXPENSE'}" class = "badge bg-danger">지출</span>
+								</td>
+								<td th:class = "${transacction.type.name() == 'INCOME' ? 'income' : 'expense'}"
+									th:text = "${#numbers.formatDecimal(transaction.amount, 0, 'COMMA', 0, 'POINT')} + '원'">
+									3,000,000원
+								</td>
+								<td th:text = "${transaction.description}">4월 급여</td>
+								<td>
+									<a th:href = "@{/transactions/{id}/edit(id = ${transaction.id})}" class = "btn btn-sm btn-outline-primary">
+										<i class = "fas fa-edit"><i>
+									</a>
+									<a th:href = "@{/trnasactions/{id}/delete(id = ${transaction.id})}" class = "btn btn-sm btn-outline-danger"
+										onclick = "return confirm('정말 삭제하시겠습니까?')">
+										<i class = "fas fa-trash"></i>
+									</a>
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+	</section>
+</body>
+</html>

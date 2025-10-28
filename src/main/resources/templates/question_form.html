@@ -1,0 +1,163 @@
+<html layout:decorate="~{layout}" lang="ko">
+<head>
+	<style>
+		form-label{
+			min-width: 400px;
+		}
+		
+	</style>
+</head>
+<body>
+<div layout:fragment="content" class="container">
+    <h5 class="my-3 border-bottom pb-2">질문 등록</h5>
+    <form th:object="${questionForm}" method="post" th:action="@{${#httpServletRequest?.requestURI}}" enctype="multipart/form-data">
+        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" data-csrf-token="true" />
+        <div th:replace="~{form_errors :: formErrorsFragment}"></div>
+
+        <div class="my-3">
+            <label for="subject" class="form-label">제목</label>
+            <input type="text" th:field="*{subject}" id="subject" class="form-control">
+        </div>
+
+        <div class="mb-3">
+            <label for="content" class="form-label">내용</label>
+			   <textarea th:field="*{content}" id="content" class="form-control" height="400px"></textarea>
+        </div>
+        
+        <div class="mb-3">
+            <label for="files" class="form-label">파일첨부</label>
+            <input multiple class="form-control" type="file" id="files" name="files">
+            <div class="form-text">You can select multiple files</div>
+        </div>
+        <input type="submit" value="저장하기" class="btn btn-primary my-2">
+    </form>
+</div>
+<th:block layout:fragment="script">
+	<script>
+			document.addEventListener('DOMContentLoaded', function() {
+				const findCsrfInput = () => {
+					const direct = document.querySelector('input[data-csrf-token="true"]');
+					if (direct && direct.value) {
+						return direct;
+					}
+					const metaParam = document.querySelector('meta[name="_csrf_parameter"]');
+					if (metaParam) {
+						const paramName = metaParam.getAttribute('content');
+						if (paramName) {
+							const named = document.querySelector('input[name="' + paramName + '"]');
+							if (named && named.value) {
+								return named;
+							}
+						}
+					}
+					return document.querySelector('input[name="_csrf"]');
+				};
+				const resolveCsrfToken = () => {
+						const csrfInput = findCsrfInput();
+						if (csrfInput && csrfInput.value) {
+							return csrfInput.value;
+					}
+					const metaToken = document.querySelector('meta[name="_csrf"]');
+					if (metaToken) {
+						const content = metaToken.getAttribute('content');
+						if (content) {
+							return content;
+						}
+					}
+						const cookieMatch = document.cookie.match(/(?:^|;\s*)ckCsrfToken=([^;]+)/);
+						return cookieMatch ? decodeURIComponent(cookieMatch[1]) : '';
+					};
+					const resolveCsrfHeaderName = () => {
+						const metaHeader = document.querySelector('meta[name="_csrf_header"]');
+						if (metaHeader) {
+							const content = metaHeader.getAttribute('content');
+							if (content) {
+								return content;
+							}
+						}
+						return 'X-CSRF-TOKEN';
+					};
+					const buildUploadHeaders = (token) => {
+						if (!token) {
+							return {};
+						}
+						const headerName = resolveCsrfHeaderName();
+						const headers = {};
+						headers[headerName] = token;
+						headers['X-CSRF-TOKEN'] = token;
+						headers['X-XSRF-TOKEN'] = token;
+						return headers;
+					};
+					const applyTokenToUrl = (url, token) => {
+						if (!token) {
+							return url;
+						}
+						const separator = url.includes('?') ? '&' : '?';
+						return url + separator + '_csrf=' + encodeURIComponent(token);
+					};
+					const csrfToken = resolveCsrfToken();
+						const uploadHeaders = buildUploadHeaders(csrfToken);
+						const uploadUrl = applyTokenToUrl('/question/ckeditor/upload', csrfToken);
+					const buildUploadAdapter = (loader, targetUrl, headers) => {
+						let abortController;
+						return {
+							upload: async () => {
+								const file = await loader.file;
+								const formData = new FormData();
+								formData.append('upload', file);
+								abortController = new AbortController();
+								const response = await fetch(targetUrl, {
+									method: 'POST',
+									body: formData,
+									headers: headers,
+									credentials: 'same-origin',
+									signal: abortController.signal
+								});
+								const asJson = await response.json().catch(() => ({}));
+								if (!response.ok) {
+									const message = asJson?.error?.message || asJson?.message || (`이미지 업로드 실패: ${response.status}`);
+									throw message;
+								}
+								if (!asJson?.url) {
+									throw '이미지 업로드 성공 응답에 url 필드가 없습니다.';
+								}
+								return { default: asJson.url };
+							},
+							abort: () => {
+								if (abortController) {
+									abortController.abort();
+								}
+							}
+						};
+					};
+					if (!csrfToken) {
+						console.warn('CKEditor CSRF 토큰을 찾을 수 없습니다. 이미지 업로드는 403이 발생할 수 있습니다.');
+					} else {
+						console.debug('CKEditor CSRF 토큰이 설정되었습니다.', uploadHeaders, uploadUrl);
+					}
+					// CKEditor 이미지 업로드는 simpleUpload와 CKFinder 양쪽 경로를 모두 허용한다.
+					// 두 플러그인은 동일한 업로드 URL과 CSRF 헤더를 공유해 서버 단 다중 엔드포인트 구성 없이 이미지를 수신한다.
+
+			    ClassicEditor
+			        .create(document.querySelector('#content'), {
+							simpleUpload: {
+								uploadUrl: uploadUrl
+							},
+							ckfinder: {
+								uploadUrl: uploadUrl
+							}
+						})
+					.then(editor => {
+						const repository = editor.plugins.get('FileRepository');
+						const headerEntries = Object.entries(uploadHeaders);
+						repository.createUploadAdapter = (loader) => buildUploadAdapter(loader, uploadUrl, headerEntries.length ? new Headers(uploadHeaders) : undefined);
+						console.debug('CKEditor version:', editor.version);
+					})
+		        .catch(error => {
+		            console.error('CKEditor 초기화 실패:', error);
+		        });
+		});
+	</script>
+</th:block>
+</body>
+</html>

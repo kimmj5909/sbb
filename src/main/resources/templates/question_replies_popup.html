@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+	<meta charset="UTF-8">
+	<title th:text="|답변/댓글 - ${question.subject}|">답변 / 댓글</title>
+	<meta name="_csrf" th:content="${_csrf.token}">
+	<meta name="_csrf_header" th:content="${_csrf.headerName}">
+	<link rel="stylesheet" th:href="@{/bootstrap.min.css}">
+	<link rel="stylesheet" th:href="@{/style.css}">
+	<style>
+		body {
+			padding: 1.5rem;
+			background: #f8f9fa;
+		}
+		.answer-card + .answer-card {
+			margin-top: 1rem;
+		}
+		.comment-card + .comment-card {
+			margin-top: 0.75rem;
+		}
+		.popup-header {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			margin-bottom: 1.5rem;
+			flex-wrap: wrap;
+			gap: 0.75rem;
+		}
+		.textarea-auto {
+			min-height: 110px;
+		}
+		.comment-textarea {
+			min-height: 80px;
+		}
+	</style>
+</head>
+<body th:attr="data-question-id=${question.id}">
+	<!-- 팝업 제목과 기본 조작 영역 -->
+	<div class="popup-header">
+		<div>
+			<h4 class="mb-1" th:text="${question.subject}">질문 제목</h4>
+			<small class="text-muted" th:text="${#temporals.format(question.createDate, 'yyyy-MM-dd HH:mm')}"></small>
+		</div>
+		<div class="d-flex gap-2">
+			<a th:href="@{|/question/detail/${question.id}|}" class="btn btn-primary btn-sm" target="_blank">상세보기</a>
+			<button type="button" class="btn btn-secondary btn-sm" onclick="window.close()">창 닫기</button>
+		</div>
+	</div>
+
+	<!-- 로그인 사용자용 답변 작성 폼 -->
+	<section class="card mb-4" sec:authorize="isAuthenticated()">
+		<div class="card-body">
+			<h5 class="card-title">답변 작성</h5>
+			<div id="answerCreateError" class="alert alert-danger d-none"></div>
+			<form id="answerCreateForm">
+				<div class="mb-3">
+					<textarea id="answerCreateContent" class="form-control textarea-auto" placeholder="새로운 답변을 입력하세요" required></textarea>
+				</div>
+				<div class="text-end">
+					<button type="submit" class="btn btn-primary btn-sm">답변 등록</button>
+				</div>
+			</form>
+		</div>
+	</section>
+	<!-- 비로그인 사용자 안내 -->
+	<section class="card mb-4" sec:authorize="isAnonymous()">
+		<div class="card-body text-center text-muted">
+			로그인 후 답변과 댓글을 작성할 수 있습니다.
+		</div>
+	</section>
+
+	<div th:if="${#lists.isEmpty(answers)}" class="alert alert-light text-center">
+		현재 등록된 답변이 없습니다.
+	</div>
+
+	<!-- 답변/댓글 반복 영역 -->
+	<div th:each="answer, answerStat : ${answers}" class="card answer-card" th:attr="data-answer-id=${answer.id}">
+		<div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+			<div>
+				<strong th:text="|답변 #${answerStat.index + 1}|">답변 #1</strong>
+				<span class="badge bg-secondary ms-2"
+					th:text="${answer.author != null ? answer.author.username : '익명'}"></span>
+			</div>
+			<small class="text-muted"
+				th:text="${#temporals.format(answer.createDate, 'yyyy-MM-dd HH:mm')}"></small>
+		</div>
+		<div class="card-body">
+			<div class="answer-content" th:utext="${@commonUtil.markdown(answer.content)}"></div>
+			<div class="answer-edit-form d-none mt-3" th:if="${answer.author != null and #authentication.name == answer.author.username}">
+				<textarea class="form-control textarea-auto" th:text="${answer.content}"></textarea>
+				<div class="text-end mt-2">
+					<button type="button" class="btn btn-primary btn-sm" data-action="answer-update"
+						th:attr="data-answer-id=${answer.id}">저장</button>
+					<button type="button" class="btn btn-secondary btn-sm" data-action="answer-edit-cancel"
+						th:attr="data-answer-id=${answer.id}">취소</button>
+				</div>
+			</div>
+			<div class="mt-3 d-flex gap-2"
+				th:if="${answer.author != null and #authentication.name == answer.author.username}"
+				sec:authorize="isAuthenticated()">
+				<button type="button" class="btn btn-outline-secondary btn-sm" data-action="answer-edit"
+					th:attr="data-answer-id=${answer.id}">수정</button>
+				<button type="button" class="btn btn-outline-danger btn-sm" data-action="answer-delete"
+					th:attr="data-answer-id=${answer.id}">삭제</button>
+			</div>
+		</div>
+		<div class="card-footer">
+			<div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+				<h6 class="mb-0">댓글</h6>
+				<span class="badge bg-light text-dark" th:text="|${#lists.size(answer.commentList)}건|">0건</span>
+			</div>
+			<div class="text-muted small my-2" th:if="${#lists.isEmpty(answer.commentList)}">아직 댓글이 없습니다.</div>
+			<div class="comment-card card mt-2" th:each="comment : ${answer.commentList}"
+				th:attr="data-comment-id=${comment.id}">
+				<div class="card-body py-2">
+					<div class="comment-content" th:utext="${comment.content}"></div>
+					<div class="comment-edit-form d-none mt-2"
+						th:if="${comment.author != null and #authentication.name == comment.author.username}">
+						<textarea class="form-control comment-textarea" th:text="${comment.content}"></textarea>
+						<div class="text-end mt-2">
+							<button type="button" class="btn btn-primary btn-sm" data-action="comment-update"
+								th:attr="data-comment-id=${comment.id}">저장</button>
+							<button type="button" class="btn btn-secondary btn-sm" data-action="comment-edit-cancel"
+								th:attr="data-comment-id=${comment.id}">취소</button>
+						</div>
+					</div>
+					<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-2">
+						<small class="text-muted"
+							th:text="${comment.author != null ? comment.author.username : '익명'} + ' | ' + ${#temporals.format(comment.createDate, 'yyyy-MM-dd HH:mm')}"></small>
+						<div class="d-flex gap-2"
+							th:if="${comment.author != null and #authentication.name == comment.author.username}"
+							sec:authorize="isAuthenticated()">
+							<button type="button" class="btn btn-outline-secondary btn-sm" data-action="comment-edit"
+								th:attr="data-comment-id=${comment.id}">수정</button>
+							<button type="button" class="btn btn-outline-danger btn-sm" data-action="comment-delete"
+								th:attr="data-comment-id=${comment.id}">삭제</button>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="mt-3" sec:authorize="isAuthenticated()">
+				<div class="alert alert-danger d-none" role="alert"
+					th:attr="id=${'commentError-' + answer.id}"></div>
+				<form class="comment-create-form" th:attr="data-answer-id=${answer.id}">
+					<div class="mb-2">
+						<textarea class="form-control comment-textarea" placeholder="댓글을 입력하세요" required></textarea>
+					</div>
+					<div class="text-end">
+						<button type="submit" class="btn btn-success btn-sm">댓글 등록</button>
+					</div>
+				</form>
+			</div>
+			<div class="mt-2 text-muted small" sec:authorize="isAnonymous()">
+				로그인 후 댓글을 작성할 수 있습니다.
+			</div>
+		</div>
+	</div>
+
+	<script>
+		// CSRF 토큰/헤더는 모든 Ajax 요청에 공통으로 붙인다.
+		const csrfToken = document.querySelector('meta[name="_csrf"]')?.content;
+		const csrfHeader = document.querySelector('meta[name="_csrf_header"]')?.content;
+		const questionId = document.body.dataset.questionId;
+
+		// 오류 메시지를 카드 상단에 노출하는 헬퍼
+		const handleError = (element, message) => {
+			if (!element) {
+				alert(message);
+				return;
+			}
+			element.textContent = message;
+			element.classList.remove('d-none');
+		};
+
+		const hideError = (element) => {
+			if (!element) {
+				return;
+			}
+			element.classList.add('d-none');
+			element.textContent = '';
+		};
+
+		// fetch 호출 공통 래퍼 (메서드/바디를 인자로 받는다)
+		const sendRequest = (url, method, payload) => {
+			const headers = {};
+			if (csrfHeader && csrfToken) {
+				headers[csrfHeader] = csrfToken;
+			}
+			if (payload !== undefined) {
+				headers['Content-Type'] = 'application/json';
+			}
+			return fetch(url, {
+				method,
+				headers,
+				body: payload !== undefined ? JSON.stringify(payload) : undefined,
+			});
+		};
+
+		const reloadPopup = () => {
+			window.location.reload();
+		};
+
+		// 답변 작성
+		const answerCreateForm = document.getElementById('answerCreateForm');
+		if (answerCreateForm) {
+			const answerCreateError = document.getElementById('answerCreateError');
+			answerCreateForm.addEventListener('submit', (event) => {
+				event.preventDefault();
+				hideError(answerCreateError);
+				const content = document.getElementById('answerCreateContent').value.trim();
+				if (!content) {
+					handleError(answerCreateError, '답변 내용을 입력해주세요.');
+					return;
+				}
+				sendRequest(`/question/replies/${questionId}/answers`, 'POST', { content })
+					.then(response => {
+						if (!response.ok) {
+							throw new Error(response.status === 400 ? '입력값을 확인해주세요.' : '답변 저장에 실패했습니다.');
+						}
+						return response.json();
+					})
+					.then(() => reloadPopup())
+					.catch(error => handleError(answerCreateError, error.message));
+			});
+		}
+
+		// 답변 수정 폼 토글
+		const toggleAnswerEdit = (answerId, show) => {
+			const card = document.querySelector(`.answer-card[data-answer-id="${answerId}"]`);
+			if (!card) {
+				return;
+			}
+			const editForm = card.querySelector('.answer-edit-form');
+			const content = card.querySelector('.answer-content');
+			if (!editForm || !content) {
+				return;
+			}
+			if (show) {
+				editForm.classList.remove('d-none');
+				content.classList.add('d-none');
+				const textarea = editForm.querySelector('textarea');
+				if (textarea) {
+					textarea.focus();
+				}
+			} else {
+				editForm.classList.add('d-none');
+				content.classList.remove('d-none');
+			}
+		};
+
+		// 댓글 수정 폼 토글
+		const toggleCommentEdit = (commentId, show) => {
+			const card = document.querySelector(`.comment-card[data-comment-id="${commentId}"]`);
+			if (!card) {
+				return;
+			}
+			const editForm = card.querySelector('.comment-edit-form');
+			const content = card.querySelector('.comment-content');
+			if (!editForm || !content) {
+				return;
+			}
+			if (show) {
+				editForm.classList.remove('d-none');
+				content.classList.add('d-none');
+				const textarea = editForm.querySelector('textarea');
+				if (textarea) {
+					textarea.focus();
+				}
+			} else {
+				editForm.classList.add('d-none');
+				content.classList.remove('d-none');
+			}
+		};
+
+		document.addEventListener('click', (event) => {
+			const target = event.target;
+			if (!(target instanceof HTMLElement)) {
+				return;
+			}
+			const action = target.dataset.action;
+			if (!action) {
+				return;
+			}
+
+			if (action === 'answer-edit') {
+				const answerId = target.dataset.answerId;
+				toggleAnswerEdit(answerId, true);
+			}
+
+			if (action === 'answer-edit-cancel') {
+				const answerId = target.dataset.answerId;
+				toggleAnswerEdit(answerId, false);
+			}
+
+			if (action === 'answer-update') {
+				const answerId = target.dataset.answerId;
+				const card = document.querySelector(`.answer-card[data-answer-id=\"${answerId}\"]`);
+				const textarea = card?.querySelector('.answer-edit-form textarea');
+				if (!textarea) {
+					return;
+				}
+				const content = textarea.value.trim();
+				if (!content) {
+					alert('답변 내용을 입력해주세요.');
+					return;
+				}
+				sendRequest(`/question/replies/answers/${answerId}`, 'PUT', { content })
+					.then(response => {
+						if (!response.ok) {
+							throw new Error(response.status === 400 ? '입력값을 확인해주세요.' : '답변 수정에 실패했습니다.');
+						}
+						return response.json();
+					})
+					.then(() => reloadPopup())
+					.catch(error => alert(error.message));
+			}
+
+			if (action === 'answer-delete') {
+				const answerId = target.dataset.answerId;
+				if (!confirm('해당 답변을 삭제하시겠습니까?')) {
+					return;
+				}
+				sendRequest(`/question/replies/answers/${answerId}`, 'DELETE')
+					.then(response => {
+						if (!response.ok) {
+							throw new Error('답변 삭제에 실패했습니다.');
+						}
+						return response.json();
+					})
+					.then(() => reloadPopup())
+					.catch(error => alert(error.message));
+			}
+
+			if (action === 'comment-edit') {
+				const commentId = target.dataset.commentId;
+				toggleCommentEdit(commentId, true);
+			}
+
+			if (action === 'comment-edit-cancel') {
+				const commentId = target.dataset.commentId;
+				toggleCommentEdit(commentId, false);
+			}
+
+			if (action === 'comment-update') {
+				const commentId = target.dataset.commentId;
+				const card = document.querySelector(`.comment-card[data-comment-id=\"${commentId}\"]`);
+				const textarea = card?.querySelector('.comment-edit-form textarea');
+				if (!textarea) {
+					return;
+				}
+				const content = textarea.value.trim();
+				if (!content) {
+					alert('댓글 내용을 입력해주세요.');
+					return;
+				}
+				sendRequest(`/question/replies/comments/${commentId}`, 'PUT', { content })
+					.then(response => {
+						if (!response.ok) {
+							throw new Error(response.status === 400 ? '입력값을 확인해주세요.' : '댓글 수정에 실패했습니다.');
+						}
+						return response.json();
+					})
+					.then(() => reloadPopup())
+					.catch(error => alert(error.message));
+			}
+
+			if (action === 'comment-delete') {
+				const commentId = target.dataset.commentId;
+				if (!confirm('해당 댓글을 삭제하시겠습니까?')) {
+					return;
+				}
+				sendRequest(`/question/replies/comments/${commentId}`, 'DELETE')
+					.then(response => {
+						if (!response.ok) {
+							throw new Error('댓글 삭제에 실패했습니다.');
+						}
+						return response.json();
+					})
+					.then(() => reloadPopup())
+					.catch(error => alert(error.message));
+			}
+		});
+
+		document.querySelectorAll('.comment-create-form').forEach(form => {
+			form.addEventListener('submit', (event) => {
+				event.preventDefault();
+				const answerId = form.dataset.answerId;
+				const textarea = form.querySelector('textarea');
+				const errorBox = document.getElementById(`commentError-${answerId}`);
+				hideError(errorBox);
+				if (!textarea) {
+					return;
+				}
+				const content = textarea.value.trim();
+				if (!content) {
+					handleError(errorBox, '댓글 내용을 입력해주세요.');
+					return;
+				}
+				sendRequest(`/question/replies/answers/${answerId}/comments`, 'POST', { content })
+					.then(response => {
+						if (!response.ok) {
+							throw new Error(response.status === 400 ? '입력값을 확인해주세요.' : '댓글 저장에 실패했습니다.');
+						}
+						return response.json();
+					})
+					.then(() => reloadPopup())
+					.catch(error => handleError(errorBox, error.message));
+			});
+		});
+	</script>
+</body>
+</html>
