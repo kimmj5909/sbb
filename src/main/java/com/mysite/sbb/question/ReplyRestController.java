@@ -137,7 +137,9 @@ public class ReplyRestController {
 	public ResponseEntity<ReplyResponse> deleteComment(@PathVariable("commentId") Integer commentId,
 			Principal principal) {
 		Comment comment = this.commentService.getComment(commentId);
-		if (!comment.getAuthor().getUsername().equals(principal.getName())) {
+		SiteUser siteUser = this.userService.getUser(principal.getName());
+		// 팝업에서도 관리자 계정은 작성자와 무관하게 댓글을 삭제할 수 있도록 권한을 확인한다.
+		if (!this.commentService.canDelete(comment, siteUser)) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
 		Integer questionId = comment.getAnswer().getQuestion().getId();

@@ -62,6 +62,20 @@ public class CommentService {
 	public void delete(Comment comment) {
 		this.commentRepository.delete(comment);
 	}
+
+	/**
+	 * 댓글 삭제 권한 확인.
+	 * - 작성자 본인 또는 관리자 계정이면 삭제를 허용한다.
+	 */
+	public boolean canDelete(Comment comment, SiteUser actor) {
+		if (comment == null || actor == null) {
+			return false;
+		}
+		SiteUser author = comment.getAuthor();
+		boolean isAuthor = author != null && author.getId() != null && author.getId().equals(actor.getId());
+		boolean isAdmin = actor.isAdmin();
+		return isAuthor || isAdmin;
+	}
 	
 	/**
 	 * 추천 사용자 추가.

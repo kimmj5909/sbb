@@ -115,14 +115,16 @@ public class CommentController {
 	
 	/**
 	 * 댓글 삭제 처리
-	 * - 작성자만 삭제할 수 있으며 삭제 후 질문 상세로 이동한다.
+	 * - 작성자 또는 관리자만 삭제할 수 있으며 삭제 후 질문 상세로 이동한다.
 	 */
 	@PreAuthorize("isAuthenticated()")
 	@GetMapping("/delete/{id}")
 	public String deleteComment(Principal principal, @PathVariable("id") Integer id) {
 		Comment comment = this.commentService.getComment(id);
-		if(!comment.getAuthor().getUsername().equals(principal.getName())) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "삭제 권한이 없습니다.");
+		SiteUser requester = this.userService.getUser(principal.getName());
+		// 작성자 본인 또는 관리자 여부를 확인한 뒤 삭제를 진행한다.
+		if(!this.commentService.canDelete(comment, requester)) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "삭제 권한이 없습니다.");
 		}
 		this.commentService.delete(comment);
 		return String.format("redirect:/question/detail/%s", comment.getAnswer().getQuestion().getId());
