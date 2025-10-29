@@ -1,0 +1,210 @@
+<html layout:decorate="~{layout}">
+<div layout:fragment="content" class="container my-4">
+    <h2 class="mb-4">관리자 대시보드</h2>
+
+    <div th:if="${adminMessage}" class="alert alert-info" th:text="${adminMessage}"></div>
+
+    <section class="mb-5">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+            <h3 class="h5 mb-0">게시물 관리</h3>
+            <div class="d-flex flex-wrap align-items-center gap-3">
+                <form id="adminPageSizeForm" method="get" class="d-flex align-items-center gap-2">
+                    <input type="hidden" name="page" value="0">
+                    <label for="adminPageSizeSelect" class="form-label mb-0 small text-muted">페이지당 게시물</label>
+                    <select id="adminPageSizeSelect" class="form-select form-select-sm" name="size"
+                            onchange="this.form.submit()">
+                        <option th:each="option : ${sizeOptions}"
+                                th:value="${option}"
+                                th:text="${option + '개'}"
+                                th:selected="${option == selectedSize}"></option>
+                    </select>
+                </form>
+                <div class="d-flex gap-2">
+                <button type="submit" form="adminPostsForm" class="btn btn-sm btn-outline-primary" name="action" value="enable"
+                        th:formaction="@{/admin/posts/notice}">
+                    공지로 지정
+                </button>
+                <button type="submit" form="adminPostsForm" class="btn btn-sm btn-outline-secondary" name="action" value="disable"
+                        th:formaction="@{/admin/posts/notice}">
+                    공지 해제
+                </button>
+                <button type="submit" form="adminPostsForm" class="btn btn-sm btn-outline-danger"
+                        th:formaction="@{/admin/posts/delete}">
+                    선택 삭제
+                </button>
+            </div>
+            </div>
+        </div>
+
+        <form id="adminPostsForm" method="post">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr class="text-center">
+                            <th scope="col">
+                                <input type="checkbox" id="selectAllPosts" class="form-check-input">
+                            </th>
+                            <th scope="col">번호</th>
+                            <th scope="col" class="text-start">제목</th>
+                            <th scope="col">작성자</th>
+                            <th scope="col">생성일</th>
+                            <th scope="col">공지 여부</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr th:each="question, loop : ${questions}" class="text-center">
+                            <td>
+                                <input class="form-check-input" type="checkbox" name="questionId"
+                                       th:value="${question.id}">
+                            </td>
+                            <td th:text="${loop.count}"></td>
+                            <td class="text-start">
+                                <a th:href="@{|/question/detail/${question.id}|}" th:text="${question.subject}"></a>
+                            </td>
+                            <td th:text="${question.author != null ? question.author.username : '익명'}"></td>
+                            <td th:text="${#temporals.format(question.createDate, 'yyyy-MM-dd HH:mm')}"></td>
+                            <td>
+                                <span th:text="${question.notice ? '공지' : '일반'}" class="badge"
+                                      th:classappend="${question.notice} ? ' bg-warning text-dark' : ' bg-light text-muted'"></span>
+                            </td>
+                        </tr>
+                        <tr th:if="${#lists.isEmpty(questions)}">
+                            <td colspan="6" class="text-center text-muted">등록된 게시물이 없습니다.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </form>
+        <div class="d-flex flex-column align-items-center mt-3" th:if="${questionPage != null}">
+            <!-- 페이지당 표시 개수를 조정하고 관리자에게 현재 노출 건수와 간단한 페이징을 안내 -->
+            <p class="mb-2 small text-muted align-self-start"
+               th:text="'총 ' + ${questionPage.totalElements} + '건 중 ' + ${questions.size()} + '건 표시'"></p>
+            <!-- 페이지네이션은 중앙 정렬된 상태로 점프 버튼에 실제 이동 페이지 번호를 표시 -->
+            <nav th:if="${questionPage.totalPages > 1}" aria-label="게시물 페이징">
+                <ul class="pagination pagination-sm mb-0 justify-content-center">
+                    <!-- 직전 페이지로 이동 -->
+                    <li class="page-item" th:classappend="${!hasPrevious} ? ' disabled'">
+                        <a class="page-link"
+                           th:href="@{|/admin?page=${previousPageIndex}&size=${selectedSize}|}">이전</a>
+                    </li>
+                    <!-- 10페이지 앞 구간이 존재할 경우 점프 링크와 생략 표시 -->
+                    <li class="page-item" th:if="${showJumpBackward}">
+                        <a class="page-link"
+                           th:href="@{|/admin?page=${jumpBackwardIndex}&size=${selectedSize}|}"
+                           th:text="${jumpBackwardLabel}"></a>
+                    </li>
+                    <li class="page-item disabled" th:if="${showJumpBackward}">
+                        <span class="page-link">...</span>
+                    </li>
+                    <!-- 현재 페이지를 중심으로 5개 번호 표시 -->
+                    <li class="page-item"
+                        th:each="pageNum : ${centerPages}"
+                        th:classappend="${pageNum == currentPage} ? ' active'">
+                        <a class="page-link"
+                           th:href="@{|/admin?page=${pageNum}&size=${selectedSize}|}"
+                           th:text="${pageNum + 1}"></a>
+                    </li>
+                    <!-- 10페이지 뒤 구간 안내 -->
+                    <li class="page-item disabled" th:if="${showJumpForward}">
+                        <span class="page-link">...</span>
+                    </li>
+                    <li class="page-item" th:if="${showJumpForward}">
+                        <a class="page-link"
+                           th:href="@{|/admin?page=${jumpForwardIndex}&size=${selectedSize}|}"
+                           th:text="${jumpForwardLabel}"></a>
+                    </li>
+                    <!-- 다음 페이지로 이동 -->
+                    <li class="page-item" th:classappend="${!hasNext} ? ' disabled'">
+                        <a class="page-link"
+                           th:href="@{|/admin?page=${nextPageIndex}&size=${selectedSize}|}">다음</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </section>
+
+    <section>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3 class="h5 mb-0">사용자 계정 관리</h3>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle">
+                <thead class="table-light">
+                    <tr class="text-center">
+                        <th scope="col">ID</th>
+                        <th scope="col">아이디</th>
+                        <th scope="col">이메일</th>
+                        <th scope="col">연락처</th>
+                        <th scope="col">권한</th>
+                        <th scope="col">작업</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr th:each="user : ${users}" class="text-center">
+                        <td th:text="${user.id}"></td>
+                        <td th:text="${user.username}"></td>
+                        <td th:text="${user.email}"></td>
+                        <td th:text="${user.phone}"></td>
+                        <td>
+                            <span class="badge" th:classappend="${user.isAdmin()} ? ' bg-primary' : ' bg-secondary'"
+                                  th:text="${user.isAdmin()} ? '관리자' : '일반'"></span>
+                        </td>
+                        <td>
+                            <form th:action="@{|/admin/users/${user.id}/role|}" method="post" class="d-flex gap-2 justify-content-center">
+                                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                                <select class="form-select form-select-sm" name="role">
+                                    <option th:each="role : ${userRoles}" th:value="${role}" th:selected="${role.value == user.isAdmin()}" th:text="${role}"></option>
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-outline-primary">저장</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr th:if="${#lists.isEmpty(users)}">
+                        <td colspan="6" class="text-center text-muted">등록된 사용자가 없습니다.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<script layout:fragment="script" type="text/javascript">
+    document.addEventListener('DOMContentLoaded', function () {
+        const selectAllCheckbox = document.getElementById('selectAllPosts');
+        const itemCheckboxes = document.querySelectorAll('#adminPostsForm input[name="questionId"]');
+        const checkboxArray = Array.from(itemCheckboxes);
+
+        // 개별 체크 상태에 따라 헤더 체크박스 및 부분 선택(indeterminate) 상태를 관리
+        const updateSelectAllState = function () {
+            if (!selectAllCheckbox) {
+                return;
+            }
+            const total = checkboxArray.length;
+            const checked = checkboxArray.filter(function (checkbox) {
+                return checkbox.checked;
+            }).length;
+            selectAllCheckbox.indeterminate = checked > 0 && checked < total;
+            selectAllCheckbox.checked = total > 0 && checked === total;
+        };
+
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', function () {
+                const checked = this.checked;
+                checkboxArray.forEach(function (checkbox) {
+                    checkbox.checked = checked;
+                });
+                selectAllCheckbox.indeterminate = false;
+                updateSelectAllState();
+            });
+        }
+
+        checkboxArray.forEach(function (checkbox) {
+            checkbox.addEventListener('change', updateSelectAllState);
+        });
+
+        updateSelectAllState();
+    });
+</script>
+
+</html>

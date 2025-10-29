@@ -1,0 +1,481 @@
+package com.mysite.sbb.question;
+
+import com.mysite.sbb.answer.AnswerForm;
+import com.mysite.sbb.comment.CommentForm;
+import com.mysite.sbb.file.FileAttachment;
+import com.mysite.sbb.file.FileService;
+import com.mysite.sbb.user.SiteUser;
+import com.mysite.sbb.user.UserService;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.net.URLEncoder;
+import java.security.Principal;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable; //question.id 매핑
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PostMapping; //question_form.html 에서 저장하기(post)로 데이터 요청
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.CreationHelper;
+import org.apache.poi.ss.usermodel.BorderStyle;
+import org.apache.poi.ss.usermodel.FillPatternType;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+//import org.springframework.web.bind.annotation.ResponseBody; @ResponseBody //템플릿 사용하려고 주석
+import org.springframework.data.domain.Page; //페이징을 위한 클래스
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import com.mysite.sbb.question.dto.ReplyResponse;
+import com.mysite.sbb.question.dto.QuestionExcelRow;
+
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@Controller
+@RequestMapping("/question") //QuestionController에서 uri 매핑 시 무조건 /question 시작
+public class QuestionController {
+
+	private final QuestionService questionService; //리포지터리 대신 서비스를 사용하도록 수정 
+	private final UserService userService;
+	private final FileService fileService;
+	
+	
+	private static final List<Integer> PAGE_SIZE_OPTIONS = List.of(10, 20, 50);
+	private static final DateTimeFormatter EXCEL_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+	/**
+	 * 게시판 목록 화면
+	 * - page: 0 기반 페이지 인덱스 (미입력 시 0으로 초기화)
+	 * - size: 허용된 게시글 수 옵션(10/20/50) 중 선택, 잘못된 값은 기본 10으로 대체
+	 * - kw  : 제목/내용/작성자/답변 작성자 통합 검색 키워드
+	 * 페이지 네비게이션과 검색 필터를 모델에 담아 Thymeleaf 템플릿에서 활용한다.
+	 */
+	@GetMapping("/list")
+	public String list(Model model,
+			@RequestParam(value="page", defaultValue="0") int page,
+			@RequestParam(value="size", defaultValue="10") int size,
+			@RequestParam(value="kw", defaultValue="") String kw) { 
+		int currentPage = Math.max(page, 0);
+		int resolvedSize = PAGE_SIZE_OPTIONS.contains(size) ? size : PAGE_SIZE_OPTIONS.get(0);
+		Page<Question> paging = this.questionService.getList(currentPage, resolvedSize, kw);
+		paging.forEach(this::prefetchAttachmentFlags);
+		model.addAttribute("paging", paging);
+		model.addAttribute("kw", kw);
+		model.addAttribute("currentPage", currentPage);
+		model.addAttribute("currentSize", resolvedSize);
+		model.addAttribute("pageSizeOptions", PAGE_SIZE_OPTIONS);
+		return "question_list";
+	}
+
+	private void prefetchAttachmentFlags(Question question) {
+		if (question == null || question.getId() == null) {
+			return;
+		}
+		// 첨부파일 테이블을 직접 조회해 이미지가 존재하는지 먼저 확인하고,
+		// 결과가 없다면 본문 내 <img> 태그 존재 여부로 한 번 더 점검한다.
+		boolean hasAttachment = this.fileService.questionHasAttachment(question.getId());
+		boolean hasImage = hasAttachment && this.fileService.questionHasImage(question.getId());
+		if (!hasImage) {
+			hasImage = question.containsEmbeddedImage();
+		}
+		question.setAttachmentsPrefetched(hasAttachment);
+		question.setImageAttachmentPrefetched(hasImage);
+	}
+	/** ## pgsql question 테이블 id 컬럼 7번부터 생성되는 현상 확인.
+	 *  question id =기존 8번 참조하는 answer 테이블의 question id 컬럼으로 인해 변경 불가능
+	 *  오류 -> (id)=(8) 키가 "answer" 테이블에서 여전히 참조됩니다. 오류발생
+	 *  
+	 *  testdb=# \d answer;
+		해당 참조키 확인
+		Foreign-key constraints:
+		    "fk8frr4bcabmmeyyu60qt7iiblo" FOREIGN KEY (question_id) REFERENCES question(id)
+		    "fk_question_id" FOREIGN KEY (question_id) REFERENCES question(id) ON UPDATE CASCADE
+
+		참조키 제약조건 확인
+		select conname, confupdtype, confdeltype from pg_constraint where conname ='fk8frr4bcabmmeyyu60qt7iiblo';
+		           conname           | confupdtype | confdeltype
+		-----------------------------+-------------+-------------
+		 fk8frr4bcabmmeyyu60qt7iiblo | a           | a				--->  a = no action(기본값) , c = cascade, r = restrict
+		(1 row)
+	 * -- 1. 기존 외래키 제약조건 삭제
+			ALTER TABLE answer DROP CONSTRAINT [기존_제약조건_이름];
+				testdb=# alter table answer drop constraint fk8frr4bcabmmeyyu60qt7iiblo;
+				ALTER TABLE
+   	   -- 2. 새로운 CASCADE 옵션 포함한 외래키 재생성
+			ALTER TABLE answer 
+			ADD CONSTRAINT fk_question_id 
+			FOREIGN KEY (question_id) 
+			REFERENCES question (id) 
+			ON UPDATE CASCADE;
+			commit;
+			
+		--3. update question set id = 2 where id = 8 ; 실행 후 update 됨 확인
+		--4. 무결성 검증 쿼리
+			testdb=# select a.* from answer a
+			testdb-# left join question q on a.question_id=q.id where q.id is null;
+			 id | content | create_date | question_id
+			----+---------+-------------+-------------
+			(0 rows)	-- 없으면 정상
+			
+		## 대체 방안 --> CASCADE 옵션 변경이 불가능할 때 사용
+			-- 1. 임시 데이터 저장
+			CREATE TABLE temp_answer AS SELECT * FROM answer WHERE question_id = old_id;
+			
+			-- 2. 기존 데이터 삭제
+			DELETE FROM answer WHERE question_id = old_id;
+			
+			-- 3. 부모 테이블 작업 수행
+			UPDATE question SET id = new_id WHERE id = old_id;
+			
+			-- 4. 데이터 복원
+			INSERT INTO answer SELECT * FROM temp_answer;
+			DROP TABLE temp_answer;
+		 
+	 * **/
+/* 백업	
+	@GetMapping(value = "/detail/{id}")
+	public String detail(Model model, @PathVariable("id") Integer id, AnswerForm answerForm) {
+		Question question = this.questionService.getQuestion(id);
+		List<FileAttachment> files = this.fileService.getFilesByQuestion(question);
+		model.addAttribute("question", question);
+		model.addAttribute("files", files);
+		return "question_detail";
+	}
+*/
+	/**
+	 * 게시글 상세 화면을 렌더링한다.
+	 * 질문 정보뿐 아니라 첨부파일 목록, 답변/댓글 작성 폼을 함께 모델에 담아
+	 * 상세 페이지에서 즉시 입력할 수 있도록 구성한다.
+	 */
+	@GetMapping(value = "/detail/{id}")
+	public String detail(Model model, @PathVariable("id") Integer id, AnswerForm answerForm, CommentForm commentForm) {
+		Question question = this.questionService.getQuestion(id);
+		List<FileAttachment> files = this.fileService.getFilesByQuestion(question);
+		model.addAttribute("question", question);
+		model.addAttribute("files", files);
+		return "question_detail";
+	}
+	
+	/**
+	 * 게시글 작성 폼으로 이동한다.
+	 * 인증된 사용자만 접근 가능하며, 빈 폼을 템플릿에 넘겨 초기값을 세팅한다.
+	 */
+	@PreAuthorize("isAuthenticated()")
+	@GetMapping("/create")
+	public String questionCreate(QuestionForm questionForm) {
+		return "question_form";
+	}
+
+	/**
+	 * 게시글 작성 요청을 처리한다.
+	 * - 입력 검증 실패 시 동일 폼으로 돌아간다.
+	 * - 작성자 정보를 Principal에서 조회해 Question 엔티티를 생성한다.
+	 * - 첨부파일이 있다면 FileService를 통해 저장한 뒤 목록으로 리다이렉트한다.
+	 */
+	@PreAuthorize("isAuthenticated()")
+	@PostMapping("/create")
+	public String questionCreate(@Valid QuestionForm questionForm, BindingResult bindingResult, Principal principal) {
+		if (bindingResult.hasErrors()) {
+			return "question_form";
+		}
+		SiteUser siteUser = this.userService.getUser(principal.getName());
+		
+		try {
+			Question question = this.questionService.create(questionForm.getSubject(), questionForm.getContent(), siteUser);
+			
+			if(questionForm.getFiles() != null) {
+				for(MultipartFile file : questionForm.getFiles()) {
+					if(!file.isEmpty()) {
+						this.fileService.saveFile(file, question);
+					}
+				}
+			}
+			
+			return "redirect:/question/list";
+		} catch (IOException e) {
+			bindingResult.reject("fileUploadError", "파일 업로드 중 오류가 발생했습니다.");
+			return "question_form";
+		}
+//		this.questionService.create(questionForm.getSubject(), questionForm.getContent(), siteUser);
+//		return "redirect:/question/list";
+	}
+
+	/**
+	 * 게시글 수정 폼으로 이동한다.
+	 * - 본인 작성 글인지 확인 후 기존 제목/내용을 폼에 채워 넣는다.
+	 */
+	@PreAuthorize("isAuthenticated()")
+	@GetMapping("/modify/{id}")
+	public String questionModify(QuestionForm questionForm, @PathVariable("id") Integer id, Principal principal) {
+		Question question = this.questionService.getQuestion(id);
+		if (!question.getAuthor().getUsername().equals(principal.getName())) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "수정권한이 없습니다.");
+		}
+		
+		questionForm.setSubject(question.getSubject());
+		questionForm.setContent(question.getContent());
+		return "question_form";
+	}
+
+	/**
+	 * 게시글 수정 저장을 처리한다.
+	 * - 검증 오류 시 폼으로 복귀
+	 * - QuestionService.modify로 본문을 갱신하고, 새 첨부파일은 동일 로직으로 저장한다.
+	 */
+	@PreAuthorize("isAuthenticated()")
+	@PostMapping("/modify/{id}")
+	public String questionModify(@Valid QuestionForm questionForm, BindingResult bindingResult, Principal principal,
+			@PathVariable("id") Integer id) {
+		if (bindingResult.hasErrors()) {
+			return "question_form";
+		}
+		Question question = this.questionService.getQuestion(id);
+		if (!question.getAuthor().getUsername().equals(principal.getName())) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "수정권한이 없습니다.");
+		}
+		
+		try {
+			this.questionService.modify(question, questionForm.getSubject(), questionForm.getContent());
+			
+			if(questionForm.getFiles() != null) {
+				for(MultipartFile file : questionForm.getFiles()) {
+					if(!file.isEmpty()) {
+						this.fileService.saveFile(file, question);
+					}
+				}
+			}
+			return String.format("redirect:/question/detail/%s", id);
+		} catch (IOException e) {
+			bindingResult.reject("fileUploadError","파일 업로드 중 오류가 발생했습니다.");
+			return "question_Form";
+		}
+	}
+
+	@PreAuthorize("isAuthenticated()")
+	@GetMapping("/delete/{id}")
+	public String questionDelete(Principal principal, @PathVariable("id") Integer id) {
+		Question question = this.questionService.getQuestion(id);
+		if (!question.getAuthor().getUsername().equals(principal.getName())) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "삭제권한이 없습니다.");
+		}
+		this.questionService.delete(question);
+		return "redirect:/";
+	}
+
+	@PreAuthorize("isAuthenticated()")
+	@GetMapping("/vote/{id}")
+	public String questionVote(Principal principal, @PathVariable("id") Integer id) {
+		Question question = this.questionService.getQuestion(id);
+		SiteUser siteUser = this.userService.getUser(principal.getName());
+		this.questionService.vote(question, siteUser);
+		return String.format("redirect:/question/detail/%s", id);
+	}
+	
+	@PreAuthorize("isAuthenticated()")
+	@GetMapping("/file/delete/{fileId}")
+	public String fileDelete(Principal principal, @PathVariable("fileId") Integer fileId) throws IOException {
+		FileAttachment file = this.fileService.getFileById(fileId);
+		Question question = file.getQuestion();
+		
+		if(!question.getAuthor().getUsername().equals(principal.getName())) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "삭제권한이 없습니다.");
+		}
+		
+		this.fileService.deleteFile(file);
+		return String.format("redirect:/question/detail/%s", question.getId());
+	}
+	
+	@GetMapping("/replies/{id}")
+	@ResponseBody
+	public ReplyResponse getReplies(@PathVariable("id") Integer id) {
+		return this.questionService.buildReplyResponse(id);
+	}
+
+	/**
+	 * CKEditor5에서 업로드한 이미지를 파일 시스템에 저장하고 접근 가능한 URL을 반환한다.
+	 */
+	@PreAuthorize("isAuthenticated()")
+	@PostMapping(value = "/ckeditor/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	@ResponseBody
+	public ResponseEntity<Map<String, Object>> uploadEditorImage(@RequestParam("upload") MultipartFile upload) {
+		if (upload == null || upload.isEmpty()) {
+			return ResponseEntity.badRequest()
+					.body(Map.of("error", Map.of("message", "업로드할 파일이 없습니다.")));
+		}
+		try {
+			String storedFilename = this.fileService.saveEditorImage(upload);
+			// UriComponentsBuilder가 내부적으로 한 번만 인코딩하도록 위임해 이중 인코딩 문제를 방지한다.
+			String imageUrl = UriComponentsBuilder.fromPath("/question/ckeditor/image/{filename}")
+					.buildAndExpand(storedFilename)
+					.encode()
+					.toUriString();
+			Map<String, Object> response = new HashMap<>();
+			response.put("url", imageUrl);
+			return ResponseEntity.ok(response);
+		} catch (IOException e) {
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+					.body(Map.of("error", Map.of("message", "이미지를 업로드하는 중 오류가 발생했습니다.")));
+		}
+	}
+
+	/**
+	 * 업로드된 에디터 이미지를 제공한다.
+	 */
+	@GetMapping("/ckeditor/image/{filename}")
+	public ResponseEntity<Resource> serveEditorImage(@PathVariable("filename") String filename) throws IOException {
+		// PathVariable은 이미 한 번 디코딩된 상태이므로 추가 디코딩 없이 바로 읽는다.
+		FileService.ResourceWrapper wrapper = this.fileService.loadEditorImage(filename);
+        Resource resource = new UrlResource(wrapper.path().toUri());
+        String contentType = wrapper.contentType() != null ? wrapper.contentType() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+		return ResponseEntity.ok()
+				.contentType(MediaType.parseMediaType(contentType))
+				.body(resource);
+	}
+	
+	@GetMapping("/replies/popup/{id}")
+	public String repliesPopup(@PathVariable("id") Integer id, Model model) {
+		Question question = this.questionService.getQuestionWithReplies(id);
+		model.addAttribute("question", question);
+		model.addAttribute("answers", question.getAnswerList());
+		return "question_replies_popup";
+	}
+	
+	@GetMapping("/excel/download")
+	public void downloadExcel(HttpServletResponse response, @RequestParam(value="kw", required = false) String kw) throws IOException {
+		List<QuestionExcelRow> excelRows = this.questionService.getExcelRows(kw);
+
+		Workbook workbook = new XSSFWorkbook();
+		Sheet sheet = workbook.createSheet("Questions");
+
+		// 헤더 스타일 (볼드 + 배경색 + 테두리)
+		Font headerFont = workbook.createFont();
+		headerFont.setBold(true);
+		CellStyle headerStyle = workbook.createCellStyle();
+		headerStyle.setFont(headerFont);
+		headerStyle.setFillForegroundColor(org.apache.poi.ss.usermodel.IndexedColors.LIGHT_YELLOW.getIndex());
+		headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+		headerStyle.setAlignment(HorizontalAlignment.CENTER);
+		applyThinBorder(headerStyle);
+
+		// 날짜 스타일
+		CreationHelper creationHelper = workbook.getCreationHelper();
+		CellStyle dateStyle = workbook.createCellStyle();
+		dateStyle.setDataFormat(creationHelper.createDataFormat().getFormat("yyyy-mm-dd hh:mm"));
+		applyThinBorder(dateStyle);
+
+		CellStyle bodyStyle = workbook.createCellStyle();
+		applyThinBorder(bodyStyle);
+
+		String[] headers = {"번호", "제목", "작성자", "작성일시", "답변 수", "댓글 수"};
+		int columnOffset = 1; // B열부터 작성
+		int headerRowIndex = 1; // 2행부터 작성
+		Row header = sheet.createRow(headerRowIndex);
+		for (int i = 0; i < headers.length; i++) {
+			var cell = header.createCell(columnOffset + i);
+			cell.setCellValue(headers[i]);
+			cell.setCellStyle(headerStyle);
+		}
+
+		int[] maxCharLengths = new int[headers.length];
+		for (int i = 0; i < headers.length; i++) {
+			maxCharLengths[i] = headers[i].length();
+		}
+
+		int rowNum = headerRowIndex + 1;
+		for (QuestionExcelRow rowData : excelRows) {
+			Row row = sheet.createRow(rowNum++);
+			int columnIndex = columnOffset;
+
+			var sequenceCell = row.createCell(columnIndex);
+			sequenceCell.setCellValue(rowData.getSequence());
+			sequenceCell.setCellStyle(bodyStyle);
+			maxCharLengths[0] = Math.max(maxCharLengths[0], String.valueOf(rowData.getSequence()).length());
+			columnIndex++;
+
+			var subjectCell = row.createCell(columnIndex);
+			subjectCell.setCellValue(rowData.getSubject());
+			subjectCell.setCellStyle(bodyStyle);
+			maxCharLengths[1] = Math.max(maxCharLengths[1],
+					rowData.getSubject() != null ? rowData.getSubject().length() : 0);
+			columnIndex++;
+
+			var authorCell = row.createCell(columnIndex);
+			authorCell.setCellValue(rowData.getAuthor());
+			authorCell.setCellStyle(bodyStyle);
+			maxCharLengths[2] = Math.max(maxCharLengths[2],
+					rowData.getAuthor() != null ? rowData.getAuthor().length() : 0);
+			columnIndex++;
+
+			var dateCell = row.createCell(columnIndex);
+			if (rowData.getCreatedAt() != null) {
+				dateCell.setCellValue(java.sql.Timestamp.valueOf(rowData.getCreatedAt()));
+				dateCell.setCellStyle(dateStyle);
+				maxCharLengths[3] = Math.max(maxCharLengths[3],
+						EXCEL_DATE_FORMATTER.format(rowData.getCreatedAt()).length());
+			} else {
+				dateCell.setCellStyle(dateStyle);
+				maxCharLengths[3] = Math.max(maxCharLengths[3], 0);
+			}
+			columnIndex++;
+
+			var answerCell = row.createCell(columnIndex);
+			answerCell.setCellValue(rowData.getAnswerCount());
+			answerCell.setCellStyle(bodyStyle);
+			maxCharLengths[4] = Math.max(maxCharLengths[4], String.valueOf(rowData.getAnswerCount()).length());
+			columnIndex++;
+
+			var commentCell = row.createCell(columnIndex);
+			commentCell.setCellValue(rowData.getCommentCount());
+			commentCell.setCellStyle(bodyStyle);
+			maxCharLengths[5] = Math.max(maxCharLengths[5], String.valueOf(rowData.getCommentCount()).length());
+		}
+
+		for (int i = 0; i < headers.length; i++) {
+			int columnIndex = columnOffset + i;
+
+			// 자동 너비 보정 (문자 수 기준)
+			int width = (maxCharLengths[i] + 2) * 256;
+			sheet.setColumnWidth(columnIndex, Math.min(width, 255 * 256));
+		}
+
+		String fileName = "question-list_" + LocalDate.now() + ".xlsx";
+		String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replaceAll("\\+", "%20");
+		response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+		response.setHeader("Content-Disposition", "attachment; filename=\"" + encodedFileName + "\"; filename*=UTF-8''" + encodedFileName);
+
+		workbook.write(response.getOutputStream());
+		workbook.close();
+	}
+
+	private void applyThinBorder(CellStyle style) {
+		style.setBorderTop(BorderStyle.THIN);
+		style.setBorderBottom(BorderStyle.THIN);
+		style.setBorderLeft(BorderStyle.THIN);
+		style.setBorderRight(BorderStyle.THIN);
+	}
+}

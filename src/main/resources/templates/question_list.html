@@ -1,0 +1,162 @@
+<html layout:decorate="~{layout}">
+<div layout:fragment="content" class="container my-3">
+		<!--본문-->
+	<div class="row my-3">
+		<div class="col-12 col-lg-6 mb-2 mb-lg-0">
+			<a th:href="@{/question/create}" class="btn btn-primary">질문 등록하기</a>
+			<a th:href="@{/question/excel/download(kw=${kw})}" class="btn btn-success ms-2">엑셀 다운로드</a>
+		</div>
+		<div class="col-12 col-lg-6 d-flex gap-2 justify-content-lg-end align-items-center flex-nowrap">
+			<!-- 게시글 표시 개수 선택 -->
+			<div class="input-group w-auto flex-shrink-0">
+				<span class="input-group-text" id="pageSizeLabel">표시</span>
+				<select class="form-select" id="pageSize" aria-labelledby="pageSizeLabel" style="min-width: 6rem;">
+					<option th:each="option : ${pageSizeOptions}" th:value="${option}" th:selected="${option == currentSize}"
+						th:text="|${option}개|"></option>
+				</select>
+			</div>
+			<!-- 검색창 -->
+			<div class="input-group flex-grow-1" style="max-width: 22rem;">
+				<input type="text" id="search_kw" class="form-control" th:value="${kw}" placeholder="검색어를 입력하세요">
+				<button class="btn btn-outline-secondary" type="button" id="btn_search">찾기</button>
+			</div>
+		</div>
+	</div>
+	<table class="table">
+		<thead class="table-dark">
+			<tr class="text-center">
+				<th>번호</th>
+				<th syte="width:50%">제목</th>
+				<th>작성자</th>
+				<th>작성일시</th>
+			</tr>
+		</thead>
+		<tbody>
+			<!--tr th:each="question, loop : ${questionList}"-->
+	<tr class="text-center" th:each="question, loop : ${paging}"
+		th:with="rowNumber=${paging.totalElements - (paging.number * currentSize) - loop.index}"
+		th:classappend="${question.notice} ? 'table-warning fw-bold' : ''">
+			<td th:text="${rowNumber > 0 ? rowNumber : loop.index + 1}"></td>
+			<!-- loop.count는 questionList를 th:each로 반복할 때 현재 순서 표시 -->
+			<td class="text-start">
+				<span th:if="${question.notice}" class="badge bg-warning text-dark me-2">공지</span>
+				<a th:href="@{|/question/detail/${question.id}|}" th:text="${question.subject}"></a>
+					<!-- 첨부파일이 존재하면 플로피 디스크, 이미지가 있으면 이어서 사진 이모지를 노출한다. -->
+					<span th:if="${question.hasAttachment()}" class="ms-2" role="img" aria-label="첨부파일 포함 게시글">💾</span>
+					<span th:if="${question.hasImageAttachment()}" class="ms-1" role="img" aria-label="이미지 포함 게시글">🖼️</span>
+					<a href="javascript:void(0);" class="text-danger small ms-2 reply-link"
+						th:if="${question.totalRepliesCount > 0}" th:text="${question.totalRepliesCount}"
+						th:data-id="${question.id}" th:data-title="${question.subject}"></a>
+
+					<!--	<a th:href="@{|/question/detail/${question.id}|}" th:text="${question.subject}"></a>
+						<span class = "text-danger samll ms-2" th:if="${#lists.size(question.answerList) > 0}" 
+							th:text="${#lists.size(question.answerList)}">
+						</span>
+						-->
+				</td>
+				<td>
+					<span th:if="${question.author != null}" th:text="${question.author.username}"></span>
+				</td>
+				<td th:text="${#temporals.format(question.createDate, 'yyyy-MM-dd HH:mm')}"></td>
+
+				<!--			<td th:text="${question.subject}"></td>
+				<td th:text="${question.createDate}"></td>
+	-->
+			</tr>
+		</tbody>
+	</table>
+	<!-- 페이징 처리-->
+	<div th:if="${!paging.isEmpty()}">
+		<ul class="pagination justify-content-center">
+			<li class="page-item" th:classappend="${!paging.hasPrevious} ? 'disabled'">
+				<a class="page-link" href="javascript:void(0)" th:if="${paging.hasPrevious}" th:attr="data-page=${paging.number-1}">
+					<span>이전</span>
+				</a>
+				<span class="page-link" th:if="${!paging.hasPrevious}">이전</span>
+			</li>
+			<li th:each="page: ${#numbers.sequence(0, paging.totalPages-1)}"
+				th:if="${page >= paging.number-5 and page <= paging.number+5}"
+				th:classappend="${page == paging.number} ? 'active'" class="page-item">
+				<span th:if="${page == paging.number}" class="page-link" th:text="${page + 1}"></span>
+				<a th:if="${page != paging.number}" th:text="${page + 1}" class="page-link" href="javascript:void(0)" th:attr="data-page=${page}"></a>
+			</li>
+			<li class="page-item" th:classappend="${!paging.hasNext} ? 'disabled'">
+				<a class="page-link" href="javascript:void(0)" th:if="${paging.hasNext}" th:attr="data-page=${paging.number+1}">
+					<span>다음</span>
+				</a>
+				<span class="page-link" th:if="${!paging.hasNext}">다음</span>
+			</li>
+		</ul>
+	</div>
+	<!-- 페이징 처리 끝 -->
+	<!-- 페이징/검색/사이즈를 함께 전송하는 폼 -->
+	<form th:action="@{/question/list}" method="get" id="searchForm">
+		<input type="hidden" id="kw" name="kw" th:value="${kw}">
+		<input type="hidden" id="page" name="page" th:value="${currentPage}">
+		<input type="hidden" id="size" name="size" th:value="${currentSize}">
+	</form>
+</div>
+
+<script layout:fragment="script" type='text/javascript'>
+	// 페이지 이동 링크 클릭 시 목표 페이지를 히든필드에 지정하고 제출
+	const paginationLinks = document.querySelectorAll('.page-link[data-page]');
+	const pageInput = document.getElementById('page');
+	const sizeInput = document.getElementById('size');
+	const pageSizeSelect = document.getElementById('pageSize');
+	Array.from(paginationLinks).forEach(function (element) {
+		element.addEventListener('click', function () {
+			if (this.closest('.disabled')) {
+				return;
+			}
+			const targetPage = Number(this.dataset.page);
+			if (Number.isNaN(targetPage) || targetPage < 0) {
+				return;
+			}
+			const currentPage = Number(pageInput.value);
+			if (!Number.isNaN(currentPage) && targetPage === currentPage) {
+				return;
+			}
+			pageInput.value = targetPage;
+			document.getElementById('searchForm').submit();
+		});
+	});
+
+	// 검색 버튼은 키워드 적용 후 첫 페이지부터 재조회
+	const btn_search = document.getElementById("btn_search");
+	btn_search.addEventListener('click', function () {
+		document.getElementById('kw').value = document.getElementById('search_kw').value;
+		document.getElementById('page').value = 0;
+		document.getElementById('searchForm').submit();
+	});
+
+	// 게시글 수 선택이 바뀌면 첫 페이지부터 다시 로딩
+	if (pageSizeSelect) {
+		pageSizeSelect.addEventListener('change', function () {
+			const selectedSize = Number(this.value);
+			if (!Number.isNaN(selectedSize) && sizeInput) {
+				sizeInput.value = selectedSize;
+				pageInput.value = 0;
+				document.getElementById('searchForm').submit();
+			}
+		});
+	}
+
+	document.addEventListener('DOMContentLoaded', function () {
+		const replyLinks = document.querySelectorAll('.reply-link');
+		replyLinks.forEach(link => {
+			link.addEventListener('click', function (event) {
+				event.preventDefault();
+				const questionId = this.dataset.id;
+				if (!questionId) {
+					return;
+				}
+				const popupUrl = `/question/replies/popup/${questionId}`;
+				const popupName = `replies_${questionId}`;
+				const popupOptions = 'width=900,height=700,top=120,left=160,scrollbars=yes,resizable=yes';
+				window.open(popupUrl, popupName, popupOptions);
+			});
+		});
+	});
+</script>
+
+</html>

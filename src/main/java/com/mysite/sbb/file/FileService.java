@@ -1,0 +1,148 @@
+package com.mysite.sbb.file;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.mysite.sbb.DataNotFoundException;
+import com.mysite.sbb.question.Question;
+
+import lombok.RequiredArgsConstructor;
+
+
+@RequiredArgsConstructor
+@Service
+/**
+ * 첨부파일 저장/조회/삭제 기능을 담당하는 서비스.
+ * 실제 파일 시스템과 데이터베이스 메타 정보를 함께 관리한다.
+ */
+public class FileService {
+	private final FileRepository fileRepository;
+	
+	@Value("${file.upload-dir}") //${file.upload-dir:${user.home}/sbb/uploads}
+	private String uploadDir;
+	private static final String EDITOR_DIR = "editor";
+	
+	/**
+	 * 업로드된 `MultipartFile`을 지정 경로에 저장하고 메타데이터를 DB에 기록한다.
+	 * - 저장 디렉터리가 없으면 생성한다.
+	 * - 파일명이 중복되지 않도록 UUID 기반 이름을 사용한다.
+	 */
+	public FileAttachment saveFile(MultipartFile file, Question question) throws IOException {
+		if(file.isEmpty()) {
+			return null;
+		}
+
+		File directory = new File(uploadDir);
+		if(!directory.exists()) {
+			directory.mkdirs();
+		}
+		String originalFilename = file.getOriginalFilename();
+		String sotredFilename = UUID.randomUUID().toString() + "_" + originalFilename;
+		
+		Path filePath = Paths.get(uploadDir, sotredFilename);
+		Files.copy(file.getInputStream(), filePath);
+		
+		FileAttachment attachment = new FileAttachment();
+		attachment.setOriginalFilename(originalFilename);
+		attachment.setStoredFilename(sotredFilename);
+		attachment.setFilePath(filePath.toString());
+		attachment.setFileSize(file.getSize());
+		attachment.setContentType(file.getContentType());
+		attachment.setUploadDate(LocalDateTime.now());
+		attachment.setQuestion(question);
+		
+		return fileRepository.save(attachment);
+	}
+
+	/**
+	 * CKEditor 전용 이미지 업로드를 처리한다.
+	 * - 게시글과 연결되지 않는 업로드이므로 FileAttachment를 생성하지 않는다.
+	 * - 저장된 파일의 접근 URL을 반환해 에디터에서 삽입하도록 한다.
+	 */
+	public String saveEditorImage(MultipartFile file) throws IOException {
+		if (file.isEmpty()) {
+			throw new IOException("빈 파일은 업로드할 수 없습니다.");
+		}
+
+		Path editorDirectory = Paths.get(uploadDir, EDITOR_DIR);
+		if (!Files.exists(editorDirectory)) {
+			Files.createDirectories(editorDirectory);
+		}
+		String originalFilename = file.getOriginalFilename();
+		String storedFilename = UUID.randomUUID().toString() + "_" + originalFilename;
+		Path filePath = editorDirectory.resolve(storedFilename);
+		Files.copy(file.getInputStream(), filePath);
+		return storedFilename;
+	}
+
+	public ResourceWrapper loadEditorImage(String storedFilename) throws IOException {
+		Path filePath = Paths.get(uploadDir, EDITOR_DIR, storedFilename);
+		if (!Files.exists(filePath) || !Files.isReadable(filePath)) {
+			throw new IOException("이미지를 읽을 수 없습니다: " + storedFilename);
+		}
+		return new ResourceWrapper(filePath, Files.probeContentType(filePath));
+	}
+	
+    public record ResourceWrapper(Path path, String contentType) {}
+
+	/**
+	 * 특정 질문에 연결된 첨부파일 목록을 반환한다.
+	 */
+	public List<FileAttachment> getFilesByQuestion(Question question){
+		return fileRepository.findByQuestion(question);
+	}
+
+	/**
+	 * 질문에 첨부파일이 하나라도 있는지 확인한다.
+	 */
+	public boolean questionHasAttachment(Integer questionId) {
+		if (questionId == null) {
+			return false;
+		}
+		return fileRepository.existsByQuestionId(questionId);
+	}
+
+	/**
+	 * 질문 첨부파일 테이블을 조회해 이미지가 존재하는지 여부를 반환한다.
+	 * - 목록 화면에서 사용되며, null ID에 대해서는 안전하게 false를 반환한다.
+	 */
+	public boolean questionHasImage(Integer questionId) {
+		if (questionId == null) {
+			return false;
+		}
+		return fileRepository.existsImageByQuestionId(questionId);
+	}
+	/**
+	 * 파일 ID로 메타 정보를 조회한다. 존재하지 않으면 예외를 발생시킨다.
+	 */
+	public FileAttachment getFileById(Integer id) {
+		Optional<FileAttachment> file = fileRepository.findById(id);
+		if(file.isPresent()) {
+			return file.get();
+		} else {
+			throw new DataNotFoundException("file not found");
+		}
+	}
+	
+	/**
+	 * 파일 시스템과 DB에서 첨부파일을 삭제한다.
+	 */
+	public void deleteFile(FileAttachment file) throws IOException {
+		Path filePath = Paths.get(file.getFilePath());
+		Files.deleteIfExists(filePath);
+		
+		fileRepository.delete(file);
+	}
+	
+}

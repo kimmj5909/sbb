@@ -1,0 +1,206 @@
+<!-- posts/form.html (Create Post Form) -->
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Create Post</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h2>Create New Post</h2>
+        
+        <form th:action="@{/posts}" method="post" enctype="multipart/form-data" th:object="${post}">
+            <div class="mb-3">
+                <label for="title" class="form-label">Title</label>
+                <input type="text" class="form-control" id="title" th:field="*{title}" required>
+            </div>
+            
+            <div class="mb-3">
+                <label for="author" class="form-label">Author</label>
+                <input type="text" class="form-control" id="author" th:field="*{author}" required>
+            </div>
+            
+            <div class="mb-3">
+                <label for="content" class="form-label">Content</label>
+                <textarea class="form-control" id="content" rows="10" th:field="*{content}" required></textarea>
+            </div>
+            
+            <div class="mb-3">
+                <label for="files" class="form-label">Attachments</label>
+                <input class="form-control" type="file" id="files" name="files" multiple>
+                <div class="form-text">You can select multiple files</div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Save Post</button>
+            <a th:href="@{/posts}" class="btn btn-secondary">Cancel</a>
+        </form>
+    </div>
+</body>
+</html>
+
+<!-- posts/edit.html (Edit Post Form) -->
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Post</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h2>Edit Post</h2>
+        
+        <form th:action="@{/posts/{id}(id=${post.id})}" method="post" enctype="multipart/form-data" th:object="${post}">
+            <div class="mb-3">
+                <label for="title" class="form-label">Title</label>
+                <input type="text" class="form-control" id="title" th:field="*{title}" required>
+            </div>
+            
+            <div class="mb-3">
+                <label for="author" class="form-label">Author</label>
+                <input type="text" class="form-control" id="author" th:field="*{author}" required>
+            </div>
+            
+            <div class="mb-3">
+                <label for="content" class="form-label">Content</label>
+                <textarea class="form-control" id="content" rows="10" th:field="*{content}" required></textarea>
+            </div>
+            
+            <!-- Current attachments -->
+            <div class="mb-3" th:if="${!post.attachments.empty}">
+                <label class="form-label">Current Attachments</label>
+                <ul class="list-group">
+                    <li class="list-group-item d-flex justify-content-between align-items-center" 
+                        th:each="file : ${post.attachments}">
+                        <span th:text="${file.originalFilename}"></span>
+                        <div>
+                            <a th:href="@{/posts/download/{filename}(filename=${file.storedFilename})}" 
+                               class="btn btn-sm btn-outline-primary">Download</a>
+                            <form th:action="@{/posts/attachments/{id}/delete(id=${file.id})}" method="post" class="d-inline">
+                                <input type="hidden" name="postId" th:value="${post.id}" />
+                                <button type="submit" class="btn btn-sm btn-outline-danger" 
+                                        onclick="return confirm('Are you sure you want to delete this file?')">Delete</button>
+                            </form>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+            
+            <div class="mb-3">
+                <label for="files" class="form-label">Add Attachments</label>
+                <input class="form-control" type="file" id="files" name="files" multiple>
+                <div class="form-text">You can select multiple files</div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Update Post</button>
+            <a th:href="@{/posts/{id}(id=${post.id})}" class="btn btn-secondary">Cancel</a>
+        </form>
+    </div>
+</body>
+</html>
+
+<!-- posts/detail.html (Post Detail View) -->
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Post Detail</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <div th:if="${message}" class="alert alert-success alert-dismissible fade show" role="alert">
+            <span th:text="${message}"></span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 th:text="${post.title}"></h3>
+                <div>
+                    <a th:href="@{/posts/{id}/edit(id=${post.id})}" class="btn btn-outline-primary">Edit</a>
+                    <form th:action="@{/posts/{id}/delete(id=${post.id})}" method="post" class="d-inline">
+                        <button type="submit" class="btn btn-outline-danger" 
+                                onclick="return confirm('Are you sure you want to delete this post?')">Delete</button>
+                    </form>
+                </div>
+            </div>
+            <div class="card-body">
+                <p><strong>Author:</strong> <span th:text="${post.author}"></span></p>
+                <p><strong>Created:</strong> <span th:text="${#temporals.format(post.createdAt, 'yyyy-MM-dd HH:mm')}"></span></p>
+                <p th:if="${post.updatedAt}"><strong>Updated:</strong> <span th:text="${#temporals.format(post.updatedAt, 'yyyy-MM-dd HH:mm')}"></span></p>
+                
+                <hr>
+                <div th:utext="${post.content}" class="mt-4 mb-4"></div>
+                
+                <!-- Attachments -->
+                <div th:if="${!post.attachments.empty}" class="mt-4">
+                    <h5>Attachments</h5>
+                    <ul class="list-group">
+                        <li class="list-group-item d-flex justify-content-between align-items-center" 
+                            th:each="file : ${post.attachments}">
+                            <span th:text="${file.originalFilename}"></span>
+                            <div>
+                                <span class="badge bg-secondary" th:text="${#numbers.formatDecimal(file.fileSize / 1024, 0, 2) + ' KB'}"></span>
+                                <a th:href="@{/posts/download/{filename}(filename=${file.storedFilename})}" 
+                                   class="btn btn-sm btn-outline-primary ms-2">Download</a>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="card-footer">
+                <a th:href="@{/posts}" class="btn btn-secondary">Back to List</a>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+
+<!-- posts/list.html (Post List View) -->
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Post List</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <div th:if="${message}" class="alert alert-success alert-dismissible fade show" role="alert">
+            <span th:text="${message}"></span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Posts</h2>
+            <a th:href="@{/posts/new}" class="btn btn-primary">New Post</a>
+        </div>
+        
+        <div class="card" th:if="${not #lists.isEmpty(posts)}">
+            <div class="list-group list-group-flush">
+                <a th:each="post : ${posts}" th:href="@{/posts/{id}(id=${post.id})}" 
+                   class="list-group-item list-group-item-action">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h5 class="mb-1" th:text="${post.title}"></h5>
+                        <small th:text="${#temporals.format(post.createdAt, 'yyyy-MM-dd')}"></small>
+                    </div>
+                    <p class="mb-1" th:text="${post.author}"></p>
+                    <small th:if="${!post.attachments.empty}" class="text-muted">
+                        <i class="bi bi-paperclip"></i> <span th:text="${post.attachments.size()}"></span> attachment(s)
+                    </small>
+                </a>
+            </div>
+        </div>
+        
+        <div class="alert alert-info" th:if="${#lists.isEmpty(posts)}">
+            No posts available. Click "New Post" to create one.
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
