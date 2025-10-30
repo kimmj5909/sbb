@@ -107,6 +107,21 @@ public class UserService {
 	}
 
 	/**
+	 * 관리자 대시보드에서 이메일/연락처/권한을 한 번에 갱신한다.
+	 */
+	public SiteUser updateUserProfile(Long userId, String email, String phone, UserRole role) {
+		SiteUser user = getUser(userId);
+		String normalizedEmail = email != null ? email.trim() : "";
+		String normalizedPhone = phone != null ? phone.trim() : "";
+		user.setEmail(normalizedEmail);
+		user.setPhone(normalizedPhone);
+		if (role != null) {
+			user.setRole(role.getValue());
+		}
+		return this.userRepository.save(user);
+	}
+
+	/**
 	 * 관리자 계정을 권한만 조정해 승격한다.
 	 */
 	public SiteUser promoteToAdmin(String username) {

@@ -141,22 +141,56 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr th:each="user : ${users}" class="text-center">
+                    <tr th:each="user : ${users}" class="text-center" th:with="formId=${'adminUserForm_' + user.id}">
                         <td th:text="${user.id}"></td>
                         <td th:text="${user.username}"></td>
-                        <td th:text="${user.email}"></td>
-                        <td th:text="${user.phone}"></td>
+                        <td class="text-start">
+                            <input type="email"
+                                   class="form-control form-control-sm"
+                                   th:value="${user.email}"
+                                   th:attr="form=${formId},name='email'"
+                                   placeholder="이메일을 입력하세요."
+                                   readonly
+                                   th:data-initial-value="${user.email}">
+                        </td>
+                        <td class="text-start">
+                            <input type="text"
+                                   class="form-control form-control-sm"
+                                   th:value="${user.phone}"
+                                   th:attr="form=${formId},name='phone'"
+                                   inputmode="numeric"
+                                   placeholder="연락처를 입력하세요."
+                                   readonly
+                                   th:data-initial-value="${user.phone}">
+                        </td>
                         <td>
                             <span class="badge" th:classappend="${user.isAdmin()} ? ' bg-primary' : ' bg-secondary'"
                                   th:text="${user.isAdmin()} ? '관리자' : '일반'"></span>
                         </td>
                         <td>
-                            <form th:action="@{|/admin/users/${user.id}/role|}" method="post" class="d-flex gap-2 justify-content-center">
+                            <form th:id="${formId}"
+                                  th:action="@{|/admin/users/${user.id}/update|}"
+                                  method="post"
+                                  class="d-flex flex-wrap align-items-center justify-content-center gap-2 admin-user-form"
+                                  th:data-initial-role="${user.isAdmin()} ? 'ADMIN' : 'USER'">
                                 <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-                                <select class="form-select form-select-sm" name="role">
-                                    <option th:each="role : ${userRoles}" th:value="${role}" th:selected="${role.value == user.isAdmin()}" th:text="${role}"></option>
+                                <select class="form-select form-select-sm"
+                                        name="role"
+                                        style="width: auto; display: inline-block;"
+                                        disabled>
+                                    <option th:each="role : ${userRoles}" th:value="${role}" th:selected="${role.value == user.isAdmin()}" th:text="${role}"
+                                            th:data-role-value="${role}"></option>
                                 </select>
-                                <button type="submit" class="btn btn-sm btn-outline-primary">저장</button>
+                                <div class="d-flex gap-2">
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-secondary admin-edit-toggle"
+                                            data-state="view">수정</button>
+                                    <button type="submit"
+                                            class="btn btn-sm btn-outline-primary admin-save-btn"
+                                            disabled>저장</button>
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-secondary admin-cancel-btn d-none">취소</button>
+                                </div>
                             </form>
                         </td>
                     </tr>
@@ -204,6 +238,90 @@
         });
 
         updateSelectAllState();
+        // 사용자 계정 관리 영역 - 수정/저장/취소 토글 로직
+        const userForms = document.querySelectorAll('.admin-user-form');
+        userForms.forEach(function (form) {
+            const editButton = form.querySelector('.admin-edit-toggle');
+            const saveButton = form.querySelector('.admin-save-btn');
+            const cancelButton = form.querySelector('.admin-cancel-btn');
+            const emailInput = form.closest('tr').querySelector('input[name="email"]');
+            const phoneInput = form.closest('tr').querySelector('input[name="phone"]');
+            const roleSelect = form.querySelector('select[name="role"]');
+            const initialRole = form.dataset.initialRole;
+
+            const getCurrentState = () => ({
+                email: emailInput.value.trim(),
+                phone: phoneInput.value.trim(),
+                role: roleSelect.value
+            });
+
+            const getInitialState = () => ({
+                email: emailInput.dataset.initialValue !== undefined ? emailInput.dataset.initialValue.trim() : '',
+                phone: phoneInput.dataset.initialValue !== undefined ? phoneInput.dataset.initialValue.trim() : '',
+                role: initialRole
+            });
+
+            const setEditMode = (editing) => {
+                emailInput.readOnly = !editing;
+                phoneInput.readOnly = !editing;
+                roleSelect.disabled = !editing;
+                if (editing) {
+                    editButton.classList.add('d-none');
+                    cancelButton.classList.remove('d-none');
+                } else {
+                    editButton.classList.remove('d-none');
+                    cancelButton.classList.add('d-none');
+                    saveButton.disabled = true;
+                }
+            };
+
+            const updateSaveButtonState = () => {
+                const initialState = getInitialState();
+                const currentState = getCurrentState();
+                const hasChanges = initialState.email !== currentState.email
+                    || initialState.phone !== currentState.phone
+                    || initialState.role !== currentState.role;
+                saveButton.disabled = !hasChanges;
+            };
+
+            const sanitizePhoneInput = () => {
+                const digitsOnly = phoneInput.value.replace(/\D/g, '');
+                if (phoneInput.value !== digitsOnly) {
+                    phoneInput.value = digitsOnly;
+                }
+            };
+
+            editButton.addEventListener('click', function () {
+                setEditMode(true);
+            });
+
+            cancelButton.addEventListener('click', function () {
+                const initialState = getInitialState();
+                emailInput.value = initialState.email;
+                phoneInput.value = initialState.phone;
+                roleSelect.value = initialState.role;
+                setEditMode(false);
+            });
+
+            emailInput.addEventListener('input', updateSaveButtonState);
+            emailInput.addEventListener('change', updateSaveButtonState);
+
+            phoneInput.addEventListener('input', function () {
+                sanitizePhoneInput();
+                updateSaveButtonState();
+            });
+            phoneInput.addEventListener('change', function () {
+                sanitizePhoneInput();
+                updateSaveButtonState();
+            });
+
+            roleSelect.addEventListener('input', updateSaveButtonState);
+            roleSelect.addEventListener('change', updateSaveButtonState);
+
+            form.addEventListener('submit', function () {
+                roleSelect.disabled = false;
+            });
+        });
     });
 </script>
 

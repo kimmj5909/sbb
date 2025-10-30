@@ -1,10 +1,11 @@
 package com.mysite.sbb.admin;
 
-import java.util.List;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 import org.springframework.data.domain.Page;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -147,6 +148,25 @@ public class AdminController {
 			RedirectAttributes redirectAttributes) {
 		this.userService.updateUserRole(userId, role);
 		redirectAttributes.addFlashAttribute("adminMessage", "사용자 권한을 변경했습니다.");
+		return "redirect:/admin";
+	}
+
+	/**
+	 * 사용자 연락처와 권한을 동시에 갱신한다.
+	 * - 이메일/연락처는 공백을 제거한 뒤 저장하며, 권한은 선택 값이 주어지면 적용한다.
+	 */
+	@PostMapping("/users/{userId}/update")
+	public String updateUserProfile(@PathVariable("userId") Long userId,
+			@RequestParam("email") String email,
+			@RequestParam("phone") String phone,
+			@RequestParam("role") UserRole role,
+			RedirectAttributes redirectAttributes) {
+		try {
+			this.userService.updateUserProfile(userId, email, phone, role);
+			redirectAttributes.addFlashAttribute("adminMessage", "사용자 정보를 저장했습니다.");
+		} catch (DataIntegrityViolationException ex) {
+			redirectAttributes.addFlashAttribute("adminMessage", "이메일 또는 연락처가 중복되었습니다. 값을 확인해 주세요.");
+		}
 		return "redirect:/admin";
 	}
 }
