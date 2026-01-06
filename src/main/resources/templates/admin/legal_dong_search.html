@@ -1,0 +1,126 @@
+<html layout:decorate="~{layout}">
+<div layout:fragment="content" class="container my-4">
+	<h2 class="mb-4">법정동 검색/조회 (DB 실시간)</h2>
+
+	<div th:if="${adminMessage}" class="alert alert-info" th:text="${adminMessage}"></div>
+	<div th:if="${errorMessage}" class="alert alert-warning" th:text="${errorMessage}"></div>
+
+	<div class="card mb-4">
+		<div class="card-body">
+			<form method="get" th:action="@{/admin/legal-dong/search}" class="row g-2 align-items-end">
+				<div class="col-md-3">
+					<label class="form-label small text-muted">검색조건</label>
+					<select class="form-select" name="field">
+						<option value="all" th:selected="${param.field == null || param.field[0] == 'all'}">전체</option>
+						<option value="legalDongCd" th:selected="${param.field != null && param.field[0] == 'legalDongCd'}">법정동코드</option>
+						<option value="legalDongNm" th:selected="${param.field != null && param.field[0] == 'legalDongNm'}">법정동명</option>
+						<option value="ctprvNm" th:selected="${param.field != null && param.field[0] == 'ctprvNm'}">시도명</option>
+						<option value="sgngNm" th:selected="${param.field != null && param.field[0] == 'sgngNm'}">시군구명</option>
+						<option value="emndnNm" th:selected="${param.field != null && param.field[0] == 'emndnNm'}">읍면동명</option>
+						<option value="liNm" th:selected="${param.field != null && param.field[0] == 'liNm'}">리명</option>
+						<option value="pastLegalDongCd" th:selected="${param.field != null && param.field[0] == 'pastLegalDongCd'}">과거법정동코드</option>
+					</select>
+				</div>
+				<div class="col-md-6">
+					<label class="form-label small text-muted">키워드</label>
+					<input class="form-control" name="keyword" th:value="${param.keyword}" placeholder="부분검색(포함) 지원">
+				</div>
+				<div class="col-md-3">
+					<label class="form-label small text-muted">날짜조건</label>
+					<select class="form-select" name="dateField">
+						<option value="none" th:selected="${param.dateField == null || param.dateField[0] == 'none'}">미사용</option>
+						<option value="crDt" th:selected="${param.dateField != null && param.dateField[0] == 'crDt'}">생성일자</option>
+						<option value="dltDt" th:selected="${param.dateField != null && param.dateField[0] == 'dltDt'}">삭제일자</option>
+					</select>
+				</div>
+				<div class="col-md-6">
+					<label class="form-label small text-muted">날짜범위</label>
+					<div class="d-flex gap-2">
+						<input class="form-control" name="dateFrom" th:value="${param.dateFrom}" placeholder="from (yyyyMMdd)">
+						<input class="form-control" name="dateTo" th:value="${param.dateTo}" placeholder="to (yyyyMMdd)">
+					</div>
+				</div>
+				<div class="col-md-3">
+					<label class="form-label small text-muted">사용여부</label>
+					<select class="form-select" name="useYn">
+						<option value="all" th:selected="${param.useYn == null || param.useYn[0] == 'all'}">전체</option>
+						<option value="used" th:selected="${param.useYn != null && param.useYn[0] == 'used'}">사용</option>
+						<option value="unused" th:selected="${param.useYn != null && param.useYn[0] == 'unused'}">미사용</option>
+					</select>
+				</div>
+				<div class="col-12">
+					<div class="d-flex flex-wrap gap-2">
+						<button class="btn btn-primary" type="submit">검색</button>
+						<a class="btn btn-outline-secondary" th:href="@{/admin/legal-dong/search}">초기화</a>
+						<a class="btn btn-outline-secondary" th:href="@{/admin/legal-dong/migration}">마이그레이션</a>
+					</div>
+				</div>
+				<input type="hidden" name="page" value="0">
+			</form>
+		</div>
+	</div>
+
+	<div class="d-flex justify-content-between align-items-center mb-2">
+		<div class="small text-muted" th:text="'총 ' + ${result.total} + '건'"></div>
+		<div class="small text-muted" th:text="'페이지 ' + (${result.page} + 1) + ' / ' + ${result.totalPages()}"></div>
+	</div>
+
+	<div class="table-responsive">
+		<table class="table table-sm table-striped align-middle">
+			<thead class="table-light">
+			<tr>
+				<th>법정동코드</th>
+				<th>법정동명</th>
+				<th>시도명</th>
+				<th>시군구명</th>
+				<th>읍면동명</th>
+				<th>리명</th>
+				<th>rank</th>
+				<th>생성일자</th>
+				<th>삭제일자</th>
+				<th>과거법정동코드</th>
+				<th>사용여부</th>
+			</tr>
+			</thead>
+			<tbody>
+			<tr th:each="e : ${result.entries}">
+				<td th:text="${e.legalDongCd}"></td>
+				<td th:text="${e.legalDongNm}"></td>
+				<td th:text="${e.ctprvNm}"></td>
+				<td th:text="${e.sgngNm}"></td>
+				<td th:text="${e.emndnNm}"></td>
+				<td th:text="${e.liNm}"></td>
+				<td th:text="${e.rank}"></td>
+				<td th:text="${e.crDt}"></td>
+				<td th:text="${e.dltDt}"></td>
+				<td th:text="${e.pastLegalDongCd}"></td>
+				<td th:text="${e.useYn == 'Y' ? '사용' : '미사용'}"></td>
+			</tr>
+			<tr th:if="${#lists.isEmpty(result.entries)}">
+				<td colspan="11" class="text-center text-muted">검색 결과가 없습니다.</td>
+			</tr>
+			</tbody>
+		</table>
+	</div>
+
+	<nav th:if="${#lists.isEmpty(pageNumbers) == false}">
+		<ul class="pagination justify-content-center">
+			<li class="page-item" th:classappend="${result.page == 0} ? ' disabled'">
+				<a class="page-link"
+				   th:href="@{/admin/legal-dong/search(page=${result.page - 1}, field=${param.field}, keyword=${param.keyword}, dateField=${param.dateField}, dateFrom=${param.dateFrom}, dateTo=${param.dateTo}, useYn=${param.useYn})}">이전</a>
+			</li>
+			<li class="page-item"
+				th:each="p : ${pageNumbers}"
+				th:classappend="${p == result.page} ? ' active'">
+				<a class="page-link"
+				   th:text="${p + 1}"
+				   th:href="@{/admin/legal-dong/search(page=${p}, field=${param.field}, keyword=${param.keyword}, dateField=${param.dateField}, dateFrom=${param.dateFrom}, dateTo=${param.dateTo}, useYn=${param.useYn})}"></a>
+			</li>
+			<li class="page-item" th:classappend="${result.page + 1 >= result.totalPages()} ? ' disabled'">
+				<a class="page-link"
+				   th:href="@{/admin/legal-dong/search(page=${result.page + 1}, field=${param.field}, keyword=${param.keyword}, dateField=${param.dateField}, dateFrom=${param.dateFrom}, dateTo=${param.dateTo}, useYn=${param.useYn})}">다음</a>
+			</li>
+		</ul>
+	</nav>
+</div>
+</html>

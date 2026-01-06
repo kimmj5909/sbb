@@ -1,0 +1,123 @@
+<html layout:decorate="~{layout}" xmlns:th="http://www.thymeleaf.org" xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout">
+<div layout:fragment="content" class="container my-4">
+	<div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2 mb-3">
+		<div>
+			<h2 class="mb-0">로그 콘솔</h2>
+			<p class="text-muted mb-0 small" th:text="|인덱스 패턴: ${indexPattern}|"></p>
+		</div>
+		<form class="d-flex gap-2 flex-wrap" method="get" th:action="@{/logs/console}">
+			<input class="form-control" type="text" name="q" placeholder="메시지 / IP / 사용자" style="min-width: 16rem;"
+				th:value="${filters.query}">
+			<select class="form-select" name="level">
+				<option value="">레벨 전체</option>
+				<option th:each="lv : ${levelOptions}" th:value="${lv}" th:text="${lv}"
+					th:selected="${lv == filters.level}"></option>
+			</select>
+			<input class="form-control" type="text" name="service" placeholder="서비스명" style="min-width: 10rem;"
+				th:value="${filters.service}">
+			<input class="form-control" type="date" name="from" th:value="${filters.fromDate}">
+			<input class="form-control" type="date" name="to" th:value="${filters.toDate}">
+			<input class="form-control" type="number" name="size" min="10" max="500" step="10" style="width: 7rem;"
+				th:value="${filters.size}">
+			<button class="btn btn-primary" type="submit">조회</button>
+		</form>
+	</div>
+
+	<div th:if="${errorMessage}" class="alert alert-danger">
+		<span th:text="${errorMessage}"></span>
+		<div class="small text-muted mt-1">Elasticsearch 연결/인덱스 상태를 먼저 확인해 주세요.</div>
+	</div>
+
+	<div class="row g-3 mb-3">
+		<div class="col-12 col-md-4">
+			<div class="card h-100 border-0 shadow-sm">
+				<div class="card-body">
+					<div class="d-flex justify-content-between align-items-center">
+						<div>
+							<div class="text-muted small">총 문서 수</div>
+							<div class="fs-4 fw-bold" th:text="${#numbers.formatInteger(result.totalHits, 0, 'COMMA')}">0</div>
+						</div>
+						<span class="badge bg-primary-subtle text-primary">count</span>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div class="col-12 col-md-4">
+			<div class="card h-100 border-0 shadow-sm">
+				<div class="card-body">
+					<div class="d-flex justify-content-between align-items-center">
+						<div>
+							<div class="text-muted small">레벨 분포</div>
+							<div class="fw-semibold" th:if="${!result.levelCounts.isEmpty()}" th:each="entry : ${result.levelCounts}">
+								<span th:text="${entry.key}"></span>
+								<span class="text-muted" th:text="|(${entry.value})|"></span>
+							</div>
+							<div class="text-muted" th:if="${result.levelCounts.isEmpty()}">데이터 없음</div>
+						</div>
+						<span class="badge bg-warning-subtle text-warning">levels</span>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div class="col-12 col-md-4">
+			<div class="card h-100 border-0 shadow-sm">
+				<div class="card-body">
+					<div class="d-flex justify-content-between align-items-center">
+						<div>
+							<div class="text-muted small">서비스 분포</div>
+							<div class="fw-semibold" th:if="${!result.serviceCounts.isEmpty()}" th:each="entry : ${result.serviceCounts}">
+								<span th:text="${entry.key}"></span>
+								<span class="text-muted" th:text="|(${entry.value})|"></span>
+							</div>
+							<div class="text-muted" th:if="${result.serviceCounts.isEmpty()}">데이터 없음</div>
+						</div>
+						<span class="badge bg-success-subtle text-success">services</span>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="table-responsive shadow-sm">
+		<table class="table table-sm align-middle mb-0">
+			<thead class="table-light">
+				<tr>
+					<th style="width: 180px;">발생시간</th>
+					<th style="width: 80px;">레벨</th>
+					<th style="width: 120px;">서비스</th>
+					<th style="width: 120px;">로그 타입</th>
+					<th style="width: 90px;">메서드</th>
+					<th style="width: 90px;">상태</th>
+					<th style="width: 110px;">지연(ms)</th>
+					<!--th>메시지</th-->
+					<th style="width: 120px;">사용자ID</th>
+					<th style="width: 130px;">사용자IP</th>
+					<th style="width: 180px;">호출URL</th>
+					<th style="width: 180px;">브라우저</th>
+					<th style="width: 200px;">Trace</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr th:each="entry : ${result.entries}">
+					<td th:text="${#temporals.format(entry.timestamp, 'yyyy-MM-dd HH:mm:ss')}"></td>
+					<td><span class="badge bg-dark-subtle text-dark" th:text="${entry.level}">INFO</span></td>
+					<td th:text="${entry.service}">-</td>
+					<td th:text="${entry.logType}">-</td>
+					<td th:text="${entry.httpMethod}">-</td>
+					<td th:text="${entry.status}">-</td>
+					<td th:text="${entry.durationMs}">-</td>
+					<!--td class="text-break" th:text="${entry.message}">-</td-->
+					<td th:text="${entry.userId}">-</td>
+					<td th:text="${entry.userIp}">-</td>
+					<td class="text-break" th:text="${entry.requestUrl}">-</td>
+					<td class="text-break" th:text="${entry.userAgent}">-</td>
+					<td class="text-break" th:text="${entry.traceId}">-</td>
+				</tr>
+				<tr th:if="${#lists.isEmpty(result.entries)}">
+					<td colspan="8" class="text-center text-muted py-4">검색 결과가 없습니다.</td>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+</div>
+</html>

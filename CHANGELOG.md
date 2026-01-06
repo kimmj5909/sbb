@@ -1,5 +1,53 @@
 # 변경 이력
 
+## 2026-01-06
+- 법정동 검색/조회 화면(`/admin/legal-dong/search`)을 Elasticsearch 기반에서 DB 실시간 조회(`tb_legal_dong_l`) 방식으로 전환하고, 재색인 기능을 제거.
+- 마이그레이션 적용 시 Elasticsearch 동기화를 제거하고 DB 반영 결과만 표시하도록 UI/서비스를 정리.
+- 법정동 검색 조건에 사용여부(전체/사용/미사용) 필터를 추가하고, `use_yn` 컬럼은 화면에서 `사용(Y)`/`미사용(null)`으로 표시되도록 개선.
+- 법정동 마이그레이션 시 읍면동 단위 행의 명칭이 `동리명` 컬럼에 들어오는 케이스를 반영해 `emndn_nm` 매핑을 보강하고, 읍면동 코드가 있는데 명칭이 비어 있는 입력은 경고로 수집.
+- `cr_dt`/`dlt_dt`를 yyyyMMdd 문자열(varchar)로 적재하도록 업서트/검색 쿼리를 정리하고, 날짜 범위 검색은 `to_date(..., 'YYYYMMDD')`로 비교하도록 개선.
+- PostgreSQL에서 null 문자열 파라미터가 `unknown`으로 처리되며 `? IS NULL` 형태에서 타입 추론 실패가 발생할 수 있어, 업서트 바인딩 타입(Types.VARCHAR)과 SQL CAST로 "매개 변수 자료형" 오류를 방지.
+- DevTools 재기동(RestartClassLoader) 환경에서 특정 클래스 로딩이 불안정한 케이스가 있어, `spring.devtools.restart.enabled=false`로 재시작 기능을 비활성화(템플릿 캐시 비활성으로 개발 편의는 유지).
+- 프로젝트 루트의 `jdk-23.0.2`를 Gradle 실행 JDK로 사용하도록 `gradlew`/`gradlew.bat`에서 자동 탐지해 JAVA_HOME을 설정하도록 보강.
+- `JAVA_HOME`/PATH가 비어 있는 환경에서도 `./gradlew`/`gradlew.bat`가 루트의 `jdk-23.0.2`를 자동 탐지해 실행하도록 래퍼 스크립트를 보강.
+- 홈 디렉터리 쓰기 제약이 있는 환경에서도 Gradle Wrapper가 동작하도록 `GRADLE_USER_HOME` 기본값을 프로젝트 루트 `.gradle/`로 지정.
+- `tb_legal_dong_l` 테이블이 없으면 기동 시 `CREATE TABLE IF NOT EXISTS`로 자동 생성하고, 과거 스키마로 생성돼 컬럼이 누락된 경우 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`로 필수 컬럼을 방어적으로 추가하도록 스키마 초기화 로직을 개선.
+- DevTools 재기동 환경에서 마이그레이션 결과 타입을 내부 클래스로 참조할 때 `NoClassDefFoundError`가 발생할 수 있어, 미리보기/적용 결과 DTO를 top-level 클래스로 분리.
+
+## 2026-01-05
+- 관리자 화면에 법정동 코드 마이그레이션(`/admin/legal-dong/migration`)을 추가하고, 엑셀(xlsx) 업로드로 데이터를 파싱·미리보기·DB 반영까지 수행하도록 구현.
+- 법정동코드를 10자리 문자열로 정규화한 뒤 단위별 꼬리값 000/00 규칙에 따라 하위 단위 코드·명칭을 null 처리하고, 상위/하위 rank를 각각 1,2,3...으로 별도 카운트해 단일 컬럼에 저장하도록 반영.
+- 전국 단위 파일도 처리할 수 있도록 PostgreSQL `ON CONFLICT` 기반 JDBC batch 업서트를 적용하고, 말소 여부는 `dlt_dt`로만 판단하며 `use_yn`은 기본 null 유지하도록 확정.
+- 대용량 엑셀 업로드를 위해 `spring.servlet.multipart.max-file-size/max-request-size` 기본값을 50MB/60MB로 상향.
+- 테스트/운영 환경에서 `tb_legal_dong_l` 테이블이 없으면 애플리케이션 시작 시점에 자동 생성하도록 초기화 로직을 추가.
+- 법정동 데이터를 Elasticsearch 인덱스(`tb_legal_dong_l`)로 동기화하고, 관리자 검색 화면(`/admin/legal-dong/search`)에서 코드/명칭/생성일자 기반 부분검색과 20개 단위 페이징 조회를 지원.
+- 마이그레이션 미리보기 화면에서 변환된 전체 데이터를 20개 단위로 페이징 조회할 수 있도록 개선하고, 페이지 이동 시 업로드 파일을 세션에 임시 보관해 재업로드 없이 탐색하도록 지원.
+- Elasticsearch 로그 인덱스 prefix 설정값에 공백이 포함돼 `invalid_index_name_exception`이 발생할 수 있어, `sbb.elasticsearch.index-prefix`를 정규화(trim/sanitize)하고 기본값을 안전하게 보정하도록 개선.
+- 법정동 검색/조회 화면에서 조회 필드를 확장(법정동코드/법정동명/시도명/시군구명/읍면동명/리명/생성일자/삭제일자/과거법정동코드)하고, 각 조건별 부분검색 및 페이징 조회를 지원.
+- 법정동 검색/조회 조건 입력을 다중 필드 입력 방식에서 "조건 선택박스 + 키워드" 방식으로 변경하고, 날짜 조건도 선택박스로 생성/삭제일자를 선택해 범위 검색하도록 개선.
+- `legal_dong_mig.md` 추가 요구사항에 맞춰 rank 계산 규칙을 조정: 시군구(sgng) 내 읍면동(emndn) 상위 rank는 1,2,3...으로 증가하고, 리(li) 하위 rank는 읍면동 그룹마다 1부터 재카운트하도록 변경.
+- 기존 데이터의 `dlt_dt`가 null인 상태에서 마이그레이션 파일에 말소일자가 들어오면 동일 `legal_dong_cd` 기준으로 `dlt_dt`만 갱신하고(`use_yn`은 null 유지), 기존 `dlt_dt`가 이미 존재하면 덮어쓰지 않도록 업데이트 조건을 단순화.
+- `use_yn` 규칙을 "말소일자 없음 = 'Y', 말소일자 존재 = null"로 정리하고, 기존 데이터에 말소일자를 업데이트하는 경우 기존 'Y' 값을 null로 전환하도록 업서트 로직을 보강(ES 인덱싱에도 동일 규칙 반영).
+- DB에서 직접 정합성 업데이트를 수행한 경우에도 검색 화면(Elasticsearch)이 최신 값을 보여줄 수 있도록, 관리자 화면에서 `tb_legal_dong_l` 테이블을 기준으로 ES 인덱스를 재색인하는 기능을 추가.
+
+## 2025-12-05
+- Elasticsearch REST 클라이언트에 Basic 인증을 적용해 `sbb.elasticsearch.username/password` 설정 시 보안 클러스터에서도 로그 적재·검색이 가능하도록 수정(미지정 시 기존 무인증 방식 유지).
+- ES 호스트 설정 키를 `sbb.elasticsearch.hosts`로 통일하고 과거 `urls` 키는 호환 세터로 흡수, 연결/소켓 타임아웃 값을 설정에서 전달하도록 정리.
+
+## 2025-12-03
+- ES 호스트 기본값을 127.0.0.1, localhost 순으로 단순화해 IPv6/내부 IP 우선 시도에 따른 Connection refused 가능성을 줄임.
+- 로컬 환경에서 127.0.0.1 접속이 차단되는 경우를 위해 ES 기본 호스트를 localhost 단일값으로 변경.
+- Elasticsearch 호스트를 복수로 설정할 수 있게(`sbb.elasticsearch.hosts`) 하고 기본값에 localhost/127.0.0.1을 모두 포함해 IPv4/IPv6/포워딩 이슈로 인한 Connection refused 가능성을 낮춤.
+- ES REST 클라이언트 설정에서 타임아웃 커스텀을 제거해 httpclient4/5 혼용 시그니처 충돌을 방지하고 기본 설정으로 연결하도록 정리.
+- 로그 콘솔에서 ES 연결 실패 시 500 오류 대신 친절한 경고 메시지를 노출하고 빈 결과를 표시하도록 방어 로직을 추가.
+- 로그 콘솔 화면을 추가하고 Elasticsearch Java 클라이언트 설정을 도입해 `logs-web*` 데이터 스트림을 검색·집계할 수 있도록 백엔드/프런트엔드를 연결.
+- HTTP 요청을 인터셉터로 수집해 ES에 적재하는 기반 클래스(모델, 인터셉터, WebMvc 설정, 적재 서비스)를 추가하고 콘솔에 HTTP 메타데이터 컬럼을 노출하는 준비를 완료.
+- SecurityContext와 user 테이블을 이용해 로그인 사용자 ID를 추출하도록 인터셉터에 사용자 연동을 적용.
+- 인터셉터/적재 서비스/모델에 기능별 주석을 추가하고 정적 리소스 제외 정책을 명시해 유지보수를 용이하게 함.
+- `seed_es_dummy_logs.sh`가 데이터 스트림 템플릿이 적용된 ES에서 bulk 주입 시 `op_type` 오류로 실패하던 문제를 create 액션과 데이터 스트림 엔드포인트를 사용하도록 수정.
+- Elasticsearch 개발 클러스터에 더미 웹/WAS 로그를 손쉽게 주입할 수 있도록 `scripts/seed_es_dummy_logs.sh` 스크립트를 추가하고 실행 권한을 부여.
+- Bulk API 호출 전 헬스 체크를 포함하고 최근 3일치 샘플 로그를 `logs-web-YYYY.MM.DD` 인덱스에 적재한 뒤 검색 결과를 바로 확인하도록 구성.
+
 ## 2025-10-29
 - `signup_form.html` 연락처 입력 필드에 숫자 전용 패턴·자리수 제한·안내 문구를 추가해 사용자가 10~11자리 숫자만 입력하도록 유도.
 - 회원가입 화면에 연락처 입력 시 즉시 숫자만 남기도록 하는 sanitize 스크립트를 추가해 잘못된 문자를 자동으로 제거.

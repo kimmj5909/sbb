@@ -35,6 +35,10 @@ set APP_HOME=%DIRNAME%
 @rem Resolve any "." and ".." in APP_HOME to make it shorter.
 for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
 
+@rem Codex/WSL 등 "홈 디렉터리 쓰기"가 제한된 환경에서도 동작하도록,
+@rem GRADLE_USER_HOME이 지정되지 않은 경우 프로젝트 루트의 `.gradle\`을 사용한다.
+if not defined GRADLE_USER_HOME set GRADLE_USER_HOME=%APP_HOME%\.gradle
+
 @rem Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
 set DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
 
@@ -44,6 +48,17 @@ if defined JAVA_HOME goto findJavaFromJavaHome
 set JAVA_EXE=java.exe
 %JAVA_EXE% -version >NUL 2>&1
 if %ERRORLEVEL% equ 0 goto execute
+
+@rem 로컬 개발 편의:
+@rem - 저장소 루트에 `jdk-23.0.2\bin\java.exe`가 있으면 JAVA_HOME/PATH 없이도 Gradle 실행이 가능하도록
+@rem   해당 JDK를 자동으로 사용한다.
+set BUNDLED_JAVA_HOME=%APP_HOME%jdk-23.0.2
+set BUNDLED_JAVA_EXE=%BUNDLED_JAVA_HOME%\bin\java.exe
+if exist "%BUNDLED_JAVA_EXE%" (
+  set JAVA_HOME=%BUNDLED_JAVA_HOME%
+  set JAVA_EXE=%BUNDLED_JAVA_EXE%
+  goto execute
+)
 
 echo. 1>&2
 echo ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH. 1>&2

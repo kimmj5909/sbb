@@ -40,3 +40,20 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### elasticsearch ###
+elasticsearch-*/
+*.tar.gz
+
+### -amd64.deb ###
+*-amd64.deb
+
+### local artifacts ###
+bootRun.log
+bootRun.pid
+.elastic.gpg
+gradle.properties
+filebeat.yml.ori
+img*.png
+jdk-23.0.2/
+openjdk-23.0.2_linux-x64_bin.tar

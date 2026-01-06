@@ -1,9 +1,12 @@
 <html layout:decorate="~{layout}">
 <div layout:fragment="content" class="container my-4">
     <h2 class="mb-4">관리자 대시보드</h2>
-
     <div th:if="${adminMessage}" class="alert alert-info" th:text="${adminMessage}"></div>
-
+    <div class="d-flex flex-wrap gap-2 mb-4">
+        <a class="btn btn-sm btn-outline-secondary" th:href="@{/admin/legal-dong/migration}">법정동 코드 마이그레이션</a>
+        <a class="btn btn-sm btn-outline-secondary" th:href="@{/admin/legal-dong/search}">법정동 검색/조회</a>
+        <a class="btn btn-sm btn-outline-secondary" th:href="@{/logs/console}">로그 콘솔</a>
+    </div>
     <section class="mb-5">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
             <h3 class="h5 mb-0">게시물 관리</h3>

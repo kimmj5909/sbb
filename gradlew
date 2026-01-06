@@ -117,6 +117,13 @@ esac
 
 CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
 
+# Codex/WSL 등 "홈 디렉터리 쓰기"가 제한된 환경에서도 동작하도록,
+# GRADLE_USER_HOME이 지정되지 않은 경우 프로젝트 루트의 `.gradle/`을 사용한다.
+if [ -z "$GRADLE_USER_HOME" ] ; then
+    GRADLE_USER_HOME="$APP_HOME/.gradle"
+    export GRADLE_USER_HOME
+fi
+
 
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
@@ -136,10 +143,19 @@ else
     JAVACMD=java
     if ! command -v java >/dev/null 2>&1
     then
-        die "ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.
+        # 로컬 개발 편의:
+        # - 저장소 루트에 `jdk-23.0.2/`(bin/java)를 두었다면, JAVA_HOME/PATH를 별도로 설정하지 않아도 Gradle 실행이 가능하도록
+        #   해당 JDK를 자동으로 사용한다.
+        BUNDLED_JAVA="$APP_HOME/jdk-23.0.2/bin/java"
+        if [ -x "$BUNDLED_JAVA" ] ; then
+            JAVA_HOME="$APP_HOME/jdk-23.0.2"
+            JAVACMD="$BUNDLED_JAVA"
+        else
+            die "ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.
 
 Please set the JAVA_HOME variable in your environment to match the
 location of your Java installation."
+        fi
     fi
 fi
 

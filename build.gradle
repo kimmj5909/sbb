@@ -6,7 +6,6 @@ plugins {
 
 group = 'com.mysite'
 version = '0.0.1-SNAPSHOT'
-
 java {
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(23)
@@ -22,12 +21,14 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.junit.jupiter:junit-jupiter'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	implementation 'org.elasticsearch.client:elasticsearch-rest-client:8.14.1'// 엘라스틱서치
+	implementation 'co.elastic.clients:elasticsearch-java:8.14.1' // 엘라스틱서치
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
 	implementation group: 'org.javassist', name: 'javassist', version: '3.15.0-GA'
 	implementation 'org.apache.poi:poi-ooxml:5.2.3'
-	
+	implementation 'org.springframework.boot:spring-boot-starter-actuator' //ㅣ와치독
 	
 	
 	implementation 'org.postgresql:postgresql'

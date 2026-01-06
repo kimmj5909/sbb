@@ -32,6 +32,8 @@ public class SecurityConfig {
 		http
 			.authorizeHttpRequests((authorizeHttpRequests) -> authorizeHttpRequests
 					.requestMatchers(new AntPathRequestMatcher("/admin/**")).hasRole("ADMIN") //관리자 페이지 접근 권한부여
+					.requestMatchers(new AntPathRequestMatcher("/logs/**")).hasRole("ADMIN")
+					.requestMatchers(new AntPathRequestMatcher("/actuator/**")).hasRole("ADMIN")
 					.requestMatchers(new AntPathRequestMatcher("/**")).permitAll())
 					 .csrf((csrf) -> csrf
 							.ignoringRequestMatchers(new AntPathRequestMatcher("/h2-console/**"))

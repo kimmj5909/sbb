@@ -11,7 +11,16 @@
 					<a class="nav-link" th:href="@{/transactions}"><del>가계부</del></a>
 				</li>
 				<li class="nav-item" sec:authorize="hasRole('ADMIN')">
-					<a class="nav-link fw-semibold" th:href="@{/admin}">관리자</a>
+					<a class="nav-link fw-semibold" th:href="@{/logs/console}">로그관리</a>
+				</li>
+				<li class="nav-item" sec:authorize="hasRole('ADMIN')">
+					<a class="nav-link fw-semibold" th:href="@{/admin}">사용자관리</a>
+				</li>
+				<li class="nav-item" sec:authorize="hasRole('ADMIN')">
+					<a class="nav-link fw-semibold" th:href="@{/admin/legal-dong/migration}">법정동마이그레이션</a>
+				</li>
+				<li class="nav-item" sec:authorize="hasRole('ADMIN')">
+					<a class="nav-link fw-semibold" th:href="@{/admin/legal-dong/search}">법정동검색</a>
 				</li>
 			</ul>
 			<ul class="navbar-nav ms-auto mb-2 mb-lg-0">
