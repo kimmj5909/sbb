@@ -66,6 +66,15 @@
 			<div class="form-text">파일을 다시 선택하지 않으면, 마지막 미리보기 업로드 파일로 적용합니다.</div>
 		</form>
 
+		<div class="mb-3">
+			<a class="btn btn-sm btn-outline-secondary" th:href="@{/admin/legal-dong/migration/preview/csv}">
+				미리보기 결과 CSV 다운로드
+			</a>
+			<div class="form-text">
+				다운로드 CSV는 DB 적재용(코드 앞 0 유지)입니다. 파싱/검증 경고가 있으면 다운로드가 차단됩니다.
+			</div>
+		</div>
+
 		<div th:if="${#lists.isEmpty(preview.errors) == false}" class="alert alert-warning">
 			<div class="fw-semibold mb-1">파싱/검증 경고</div>
 			<ul class="mb-0">

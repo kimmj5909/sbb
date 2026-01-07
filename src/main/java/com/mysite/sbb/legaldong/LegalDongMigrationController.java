@@ -1,9 +1,14 @@
 package com.mysite.sbb.legaldong;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
@@ -37,6 +42,7 @@ public class LegalDongMigrationController {
 
 	private static final String SESSION_KEY_PREVIEW_BYTES = "legalDongMigrationPreviewBytes";
 	private static final String SESSION_KEY_PREVIEW_FILENAME = "legalDongMigrationPreviewFileName";
+	private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.BASIC_ISO_DATE;
 
 	private final LegalDongMigrationService migrationService;
 
@@ -60,6 +66,48 @@ public class LegalDongMigrationController {
 		model.addAttribute("fileName", fileName != null ? fileName : "(업로드 파일)");
 		model.addAttribute("pageNumbers", buildPageNumbers(preview));
 		return "admin/legal_dong_migration";
+	}
+
+	/**
+	 * 미리보기 파생 결과 전체를 CSV로 다운로드한다.
+	 *
+	 * 주의
+	 * - 미리보기는 페이지 단위로 표시되지만, CSV 다운로드는 전체 파생 결과를 내려준다.
+	 * - 브라우저/엑셀에서 숫자로 해석하면 앞 0이 유실될 수 있으므로, "DB 적재용"으로 사용하는 것을 권장한다.
+	 * - 파싱/검증 경고(errors)가 존재하면, CSV 적재 시 오염 가능성이 있어 400으로 차단한다.
+	 */
+	@GetMapping("/migration/preview/csv")
+	public ResponseEntity<byte[]> downloadPreviewCsv(HttpSession session) {
+		byte[] bytes = (byte[]) session.getAttribute(SESSION_KEY_PREVIEW_BYTES);
+		if (bytes == null || bytes.length == 0) {
+			return ResponseEntity.badRequest()
+					.contentType(MediaType.TEXT_PLAIN)
+					.body("미리보기 데이터가 없습니다. 엑셀 파일을 먼저 업로드하세요.".getBytes(StandardCharsets.UTF_8));
+		}
+
+		LegalDongMigrationPreviewResult preview = migrationService.preview(bytes, 0, Integer.MAX_VALUE);
+		if (preview.getErrors() != null && preview.getErrors().isEmpty() == false) {
+			String message = "파싱/검증 경고가 존재해 CSV 다운로드를 중단합니다.\n- "
+					+ String.join("\n- ", preview.getErrors());
+			return ResponseEntity.badRequest()
+					.contentType(MediaType.TEXT_PLAIN)
+					.body(message.getBytes(StandardCharsets.UTF_8));
+		}
+
+		String originalFileName = (String) session.getAttribute(SESSION_KEY_PREVIEW_FILENAME);
+		String csvFileName = toCsvFileName(originalFileName != null ? originalFileName : "legal_dong_migration.xlsx");
+
+		StringBuilder csv = new StringBuilder(1024);
+		csv.append("legal_dong_cd,legal_dong_nm,ctprv_cd,ctprv_nm,sgng_cd,sgng_nm,emndn_cd,emndn_nm,li_cd,li_nm,rank,cr_dt,dlt_dt\r\n");
+		for (LegalDongDerivedRow row : preview.getEntries()) {
+			appendCsvRow(csv, row);
+			csv.append("\r\n");
+		}
+
+		return ResponseEntity.ok()
+				.header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + csvFileName + "\"")
+				.contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+				.body(csv.toString().getBytes(StandardCharsets.UTF_8));
 	}
 
 	@PostMapping("/migration/preview")
@@ -138,5 +186,46 @@ public class LegalDongMigrationController {
 			pages.add(i);
 		}
 		return pages;
+	}
+
+	private void appendCsvRow(StringBuilder csv, LegalDongDerivedRow row) {
+		// CSV 필드 순서는 업서트 SQL 스크립트(복사 적재)와 동일하게 유지한다.
+		appendCsvField(csv, row.getLegalDongCd()); csv.append(',');
+		appendCsvField(csv, row.getLegalDongNm()); csv.append(',');
+		appendCsvField(csv, row.getCtprvCd()); csv.append(',');
+		appendCsvField(csv, row.getCtprvNm()); csv.append(',');
+		appendCsvField(csv, row.getSgngCd()); csv.append(',');
+		appendCsvField(csv, row.getSgngNm()); csv.append(',');
+		appendCsvField(csv, row.getEmndnCd()); csv.append(',');
+		appendCsvField(csv, row.getEmndnNm()); csv.append(',');
+		appendCsvField(csv, row.getLiCd()); csv.append(',');
+		appendCsvField(csv, row.getLiNm()); csv.append(',');
+		appendCsvField(csv, row.getRank() == null ? null : row.getRank().toString()); csv.append(',');
+		appendCsvField(csv, row.getCrDt() == null ? null : YYYYMMDD.format(row.getCrDt())); csv.append(',');
+		appendCsvField(csv, row.getDltDt() == null ? null : YYYYMMDD.format(row.getDltDt()));
+	}
+
+	private void appendCsvField(StringBuilder csv, String value) {
+		if (value == null) {
+			return;
+		}
+		String normalized = value.trim();
+		boolean needsQuote = normalized.contains(",") || normalized.contains("\"") || normalized.contains("\n") || normalized.contains("\r");
+		if (needsQuote == false) {
+			csv.append(normalized);
+			return;
+		}
+		csv.append('"');
+		csv.append(normalized.replace("\"", "\"\""));
+		csv.append('"');
+	}
+
+	private String toCsvFileName(String originalFileName) {
+		// 파일명에 경로 구분자가 섞여 들어오는 것을 방지하고, 확장자를 csv로 교체한다.
+		String base = originalFileName.replace("\\", "_").replace("/", "_");
+		if (base.toLowerCase().endsWith(".xlsx")) {
+			base = base.substring(0, base.length() - 5);
+		}
+		return base + ".derived.csv";
 	}
 }

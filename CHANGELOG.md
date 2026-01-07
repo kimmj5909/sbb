@@ -1,5 +1,9 @@
 # 변경 이력
 
+## 2026-01-07
+- 법정동 마이그레이션 미리보기 결과를 CSV로 다운로드할 수 있도록 `/admin/legal-dong/migration/preview/csv` 엔드포인트와 UI 버튼을 추가.
+- 미리보기 CSV를 psql `\\copy`로 적재해 `tb_legal_dong_l`에 `ON CONFLICT` 업서트하는 스크립트 `scripts/legal_dong_upsert_from_csv.sql`을 추가.
+
 ## 2026-01-06
 - 법정동 검색/조회 화면(`/admin/legal-dong/search`)을 Elasticsearch 기반에서 DB 실시간 조회(`tb_legal_dong_l`) 방식으로 전환하고, 재색인 기능을 제거.
 - 마이그레이션 적용 시 Elasticsearch 동기화를 제거하고 DB 반영 결과만 표시하도록 UI/서비스를 정리.
