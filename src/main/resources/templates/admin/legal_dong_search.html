@@ -108,18 +108,26 @@
 						<input type="hidden" name="size" th:value="${param.size != null ? param.size[0] : '40'}">
 						<input type="hidden" name="page" th:value="${result.page}">
 
-						<input class="form-control form-control-sm"
-							   name="pastLegalDongCd"
-							   placeholder="과거코드(10자리)"
-							   style="width: 130px;"
-							   th:value="${e.pastLegalDongCd}"
-							   disabled>
-						<input class="form-control form-control-sm"
-							   name="dltDt"
-							   placeholder="말소일자(yyyyMMdd)"
-							   style="width: 140px;"
-							   th:value="${e.dltDt != null ? #strings.replace(e.dltDt, '-', '') : ''}"
-							   disabled>
+							<input class="form-control form-control-sm"
+								   name="pastLegalDongCd"
+								   placeholder="과거코드(10자리)"
+								   inputmode="numeric"
+								   pattern="[0-9]{10}"
+								   maxlength="10"
+								   title="숫자 10자리만 입력하세요."
+								   style="width: 130px;"
+								   th:value="${e.pastLegalDongCd}"
+								   disabled>
+							<input class="form-control form-control-sm"
+								   name="dltDt"
+								   placeholder="말소일자(yyyyMMdd)"
+								   inputmode="numeric"
+								   pattern="[0-9]{8}"
+								   maxlength="8"
+								   title="yyyyMMdd 형식(숫자 8자리)로 입력하세요."
+								   style="width: 140px;"
+								   th:value="${e.dltDt != null ? #strings.replace(e.dltDt, '-', '') : ''}"
+								   disabled>
 
 						<div class="d-flex gap-2">
 							<button type="button" class="btn btn-sm btn-outline-secondary legal-dong-edit-toggle" data-state="view">수정</button>
@@ -202,6 +210,19 @@
 				dltInput.value = initial.dlt;
 				setEditMode(false);
 			});
+
+			const sanitizeDigits = function (element, maxLen) {
+				if (!element) {
+					return;
+				}
+				element.addEventListener('input', function () {
+					const digits = (this.value || '').replace(/[^0-9]/g, '');
+					this.value = digits.length > maxLen ? digits.slice(0, maxLen) : digits;
+				});
+			};
+
+			sanitizeDigits(pastInput, 10);
+			sanitizeDigits(dltInput, 8);
 		});
 	});
 </script>
