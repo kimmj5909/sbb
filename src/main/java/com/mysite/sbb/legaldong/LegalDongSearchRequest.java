@@ -14,7 +14,7 @@ import lombok.Data;
  * 요구사항 반영
  * - 문자열 필드: 부분검색(contains)
  * - 생성/삭제일자: 날짜 range 검색(yyyyMMdd)
- * - 페이징: 기본 20개/페이지
+ * - 페이징: 기본 40개/페이지(선택: 40/100/200)
  */
 public class LegalDongSearchRequest {
 	/**
@@ -62,5 +62,5 @@ public class LegalDongSearchRequest {
 	private LocalDate dltDtTo;
 	private String pastLegalDongCd;
 	private int page = 0;
-	private int size = 20;
+	private int size = 40;
 }

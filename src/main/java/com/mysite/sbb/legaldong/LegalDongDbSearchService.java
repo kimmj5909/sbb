@@ -62,7 +62,7 @@ public class LegalDongDbSearchService {
 	private int clampSize(int size) {
 		// 관리자 화면에서 과도한 조회로 DB 부하가 급증하지 않도록 상한을 둔다.
 		if (size <= 0) {
-			return 20;
+			return 40;
 		}
 		return Math.min(size, 200);
 	}

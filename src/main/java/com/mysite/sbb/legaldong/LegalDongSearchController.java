@@ -5,12 +5,15 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 
+import org.springframework.security.core.Authentication;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 /**
  * 법정동 DB 검색/조회 화면.
@@ -27,9 +30,11 @@ public class LegalDongSearchController {
 	private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.ofPattern("yyyyMMdd");
 
 	private final LegalDongDbSearchService dbSearchService;
+	private final LegalDongAdminUpdateService adminUpdateService;
 
-	public LegalDongSearchController(LegalDongDbSearchService dbSearchService) {
+	public LegalDongSearchController(LegalDongDbSearchService dbSearchService, LegalDongAdminUpdateService adminUpdateService) {
 		this.dbSearchService = dbSearchService;
+		this.adminUpdateService = adminUpdateService;
 	}
 
 	@GetMapping("/search")
@@ -40,6 +45,7 @@ public class LegalDongSearchController {
 			@RequestParam(value = "dateFrom", required = false) String dateFrom,
 			@RequestParam(value = "dateTo", required = false) String dateTo,
 			@RequestParam(value = "useYn", required = false) String useYn,
+			@RequestParam(value = "size", required = false, defaultValue = "40") Integer size,
 			// 아래 2개는 기존 체크박스 파라미터 호환용.
 			@RequestParam(value = "useYnUsed", required = false) String useYnUsed,
 			@RequestParam(value = "useYnUnused", required = false) String useYnUnused,
@@ -86,7 +92,7 @@ public class LegalDongSearchController {
 			request.setDltDtTo(parseYyyyMmDd(legacyDltTo));
 		}
 		request.setPage(page != null ? page : 0);
-		request.setSize(20);
+		request.setSize(size != null ? size : 40);
 
 		LegalDongSearchResult result;
 		try {
@@ -100,6 +106,33 @@ public class LegalDongSearchController {
 		model.addAttribute("result", result);
 		model.addAttribute("pageNumbers", buildPageNumbers(result));
 		return "admin/legal_dong_search";
+	}
+
+	/**
+	 * 검색 목록에서 과거코드/말소일자를 인라인으로 수정한다.
+	 *
+	 * 주의: 클래스 레벨 @RequestMapping("/admin/legal-dong") 기준으로 상대 경로만 사용한다.
+	 */
+	@PostMapping("/update")
+	public String updateFromList(
+			@RequestParam("legalDongCd") String legalDongCd,
+			@RequestParam(value = "pastLegalDongCd", required = false) String pastLegalDongCd,
+			@RequestParam(value = "dltDt", required = false) String dltDt,
+			@RequestParam(value = "returnUrl", required = false) String returnUrl,
+			Authentication authentication,
+			RedirectAttributes redirectAttributes) {
+		String operatorId = authentication != null ? authentication.getName() : "SYSTEM";
+		try {
+			adminUpdateService.updateAdminFields(legalDongCd, pastLegalDongCd, dltDt, operatorId);
+			redirectAttributes.addFlashAttribute("adminMessage", "수정 완료: " + legalDongCd);
+		} catch (RuntimeException ex) {
+			redirectAttributes.addFlashAttribute("errorMessage", "수정 실패: " + ex.getMessage());
+		}
+
+		if (returnUrl != null && returnUrl.isBlank() == false) {
+			return "redirect:" + returnUrl;
+		}
+		return "redirect:/admin/legal-dong/search";
 	}
 
 	private void applyUseYnFilter(LegalDongSearchRequest request, String useYn, String useYnUsed, String useYnUnused) {

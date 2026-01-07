@@ -3,6 +3,7 @@
 ## 2026-01-07
 - 법정동 마이그레이션 미리보기 결과를 CSV로 다운로드할 수 있도록 `/admin/legal-dong/migration/preview/csv` 엔드포인트와 UI 버튼을 추가.
 - 미리보기 CSV를 psql `\\copy`로 적재해 `tb_legal_dong_l`에 `ON CONFLICT` 업서트하는 스크립트 `scripts/legal_dong_upsert_from_csv.sql`을 추가.
+- 법정동 검색/조회 화면(`/admin/legal-dong/search`)에 페이지 표시 개수 선택(40/100/200)을 추가하고, 목록에서 과거코드/말소일자를 인라인으로 수정할 수 있도록 관리자 수정 API를 추가.
 
 ## 2026-01-06
 - 법정동 검색/조회 화면(`/admin/legal-dong/search`)을 Elasticsearch 기반에서 DB 실시간 조회(`tb_legal_dong_l`) 방식으로 전환하고, 재색인 기능을 제거.

@@ -48,6 +48,14 @@
 						<option value="unused" th:selected="${param.useYn != null && param.useYn[0] == 'unused'}">미사용</option>
 					</select>
 				</div>
+				<div class="col-md-3">
+					<label class="form-label small text-muted">페이지 표시</label>
+					<select class="form-select" name="size">
+						<option value="40" th:selected="${param.size == null || param.size[0] == '40'}">40개</option>
+						<option value="100" th:selected="${param.size != null && param.size[0] == '100'}">100개</option>
+						<option value="200" th:selected="${param.size != null && param.size[0] == '200'}">200개</option>
+					</select>
+				</div>
 				<div class="col-12">
 					<div class="d-flex flex-wrap gap-2">
 						<button class="btn btn-primary" type="submit">검색</button>
@@ -69,6 +77,7 @@
 		<table class="table table-sm table-striped align-middle">
 			<thead class="table-light">
 			<tr>
+				<th>수정</th>
 				<th>법정동코드</th>
 				<th>법정동명</th>
 				<th>시도명</th>
@@ -84,6 +93,34 @@
 			</thead>
 			<tbody>
 			<tr th:each="e : ${result.entries}">
+				<td style="min-width: 230px;">
+					<form method="post"
+						  th:action="@{/admin/legal-dong/update}"
+						  class="d-flex flex-wrap gap-2 align-items-center legal-dong-edit-form">
+						<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+						<input type="hidden" name="legalDongCd" th:value="${e.legalDongCd}">
+						<input type="hidden" name="returnUrl" th:value="${#httpServletRequest.requestURI + (#httpServletRequest.queryString != null ? '?' + #httpServletRequest.queryString : '')}">
+
+						<input class="form-control form-control-sm"
+							   name="pastLegalDongCd"
+							   placeholder="과거코드(10자리)"
+							   style="width: 130px;"
+							   th:value="${e.pastLegalDongCd}"
+							   disabled>
+						<input class="form-control form-control-sm"
+							   name="dltDt"
+							   placeholder="말소일자(yyyyMMdd)"
+							   style="width: 140px;"
+							   th:value="${e.dltDt != null ? #strings.replace(e.dltDt, '-', '') : ''}"
+							   disabled>
+
+						<div class="d-flex gap-2">
+							<button type="button" class="btn btn-sm btn-outline-secondary legal-dong-edit-toggle" data-state="view">수정</button>
+							<button type="submit" class="btn btn-sm btn-outline-primary legal-dong-save" disabled>저장</button>
+							<button type="button" class="btn btn-sm btn-outline-secondary legal-dong-cancel d-none">취소</button>
+						</div>
+					</form>
+				</td>
 				<td th:text="${e.legalDongCd}"></td>
 				<td th:text="${e.legalDongNm}"></td>
 				<td th:text="${e.ctprvNm}"></td>
@@ -97,7 +134,7 @@
 				<td th:text="${e.useYn == 'Y' ? '사용' : '미사용'}"></td>
 			</tr>
 			<tr th:if="${#lists.isEmpty(result.entries)}">
-				<td colspan="11" class="text-center text-muted">검색 결과가 없습니다.</td>
+				<td colspan="12" class="text-center text-muted">검색 결과가 없습니다.</td>
 			</tr>
 			</tbody>
 		</table>
@@ -107,20 +144,57 @@
 		<ul class="pagination justify-content-center">
 			<li class="page-item" th:classappend="${result.page == 0} ? ' disabled'">
 				<a class="page-link"
-				   th:href="@{/admin/legal-dong/search(page=${result.page - 1}, field=${param.field}, keyword=${param.keyword}, dateField=${param.dateField}, dateFrom=${param.dateFrom}, dateTo=${param.dateTo}, useYn=${param.useYn})}">이전</a>
+				   th:href="@{/admin/legal-dong/search(page=${result.page - 1}, size=${param.size}, field=${param.field}, keyword=${param.keyword}, dateField=${param.dateField}, dateFrom=${param.dateFrom}, dateTo=${param.dateTo}, useYn=${param.useYn})}">이전</a>
 			</li>
 			<li class="page-item"
 				th:each="p : ${pageNumbers}"
 				th:classappend="${p == result.page} ? ' active'">
 				<a class="page-link"
 				   th:text="${p + 1}"
-				   th:href="@{/admin/legal-dong/search(page=${p}, field=${param.field}, keyword=${param.keyword}, dateField=${param.dateField}, dateFrom=${param.dateFrom}, dateTo=${param.dateTo}, useYn=${param.useYn})}"></a>
+				   th:href="@{/admin/legal-dong/search(page=${p}, size=${param.size}, field=${param.field}, keyword=${param.keyword}, dateField=${param.dateField}, dateFrom=${param.dateFrom}, dateTo=${param.dateTo}, useYn=${param.useYn})}"></a>
 			</li>
 			<li class="page-item" th:classappend="${result.page + 1 >= result.totalPages()} ? ' disabled'">
 				<a class="page-link"
-				   th:href="@{/admin/legal-dong/search(page=${result.page + 1}, field=${param.field}, keyword=${param.keyword}, dateField=${param.dateField}, dateFrom=${param.dateFrom}, dateTo=${param.dateTo}, useYn=${param.useYn})}">다음</a>
+				   th:href="@{/admin/legal-dong/search(page=${result.page + 1}, size=${param.size}, field=${param.field}, keyword=${param.keyword}, dateField=${param.dateField}, dateFrom=${param.dateFrom}, dateTo=${param.dateTo}, useYn=${param.useYn})}">다음</a>
 			</li>
 		</ul>
 	</nav>
 </div>
 </html>
+
+<script layout:fragment="script" type="text/javascript">
+	document.addEventListener('DOMContentLoaded', function () {
+		const forms = document.querySelectorAll('.legal-dong-edit-form');
+		forms.forEach(function (form) {
+			const editButton = form.querySelector('.legal-dong-edit-toggle');
+			const saveButton = form.querySelector('.legal-dong-save');
+			const cancelButton = form.querySelector('.legal-dong-cancel');
+			const pastInput = form.querySelector('input[name="pastLegalDongCd"]');
+			const dltInput = form.querySelector('input[name="dltDt"]');
+			const initial = {
+				past: pastInput.value,
+				dlt: dltInput.value
+			};
+
+			const setEditMode = function (enabled) {
+				pastInput.disabled = !enabled;
+				dltInput.disabled = !enabled;
+				saveButton.disabled = !enabled;
+				cancelButton.classList.toggle('d-none', !enabled);
+				editButton.textContent = enabled ? '보기' : '수정';
+				editButton.dataset.state = enabled ? 'edit' : 'view';
+			};
+
+			editButton.addEventListener('click', function () {
+				const isEdit = editButton.dataset.state === 'edit';
+				setEditMode(!isEdit);
+			});
+
+			cancelButton.addEventListener('click', function () {
+				pastInput.value = initial.past;
+				dltInput.value = initial.dlt;
+				setEditMode(false);
+			});
+		});
+	});
+</script>
