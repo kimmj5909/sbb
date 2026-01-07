@@ -5,6 +5,7 @@
 - 미리보기 CSV를 psql `\\copy`로 적재해 `tb_legal_dong_l`에 `ON CONFLICT` 업서트하는 스크립트 `scripts/legal_dong_upsert_from_csv.sql`을 추가.
 - 법정동 검색/조회 화면(`/admin/legal-dong/search`)에 페이지 표시 개수 선택(40/100/200)을 추가하고, 목록에서 과거코드/말소일자를 인라인으로 수정할 수 있도록 관리자 수정 API를 추가.
 - 템플릿 전반의 본문 컨테이너를 `container-fluid`로 확장해 테이블 줄바꿈/폭 부족 이슈를 완화.
+- Elasticsearch 비밀번호를 소스(`src/main/resources/application.properties`)에 하드코딩하지 않고 로컬 외부 설정(`config/application.properties`)으로 관리할 수 있도록 예시 파일과 `.gitignore`를 추가.
 
 ## 2026-01-06
 - 법정동 검색/조회 화면(`/admin/legal-dong/search`)을 DB 실시간 조회(`tb_legal_dong_l`) 방식으로 제공하고, 별도 색인/동기화 작업 없이 최신 데이터를 즉시 반영하도록 정리.

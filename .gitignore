@@ -57,3 +57,7 @@ filebeat.yml.ori
 img*.png
 jdk-23.0.2/
 openjdk-23.0.2_linux-x64_bin.tar
+
+### local config (secrets) ###
+config/application.properties
+config/application-*.properties

@@ -1,0 +1,7 @@
+sbb.elasticsearch.hosts=http://localhost:9200
+sbb.elasticsearch.username=elastic
+sbb.elasticsearch.password=PUT_YOUR_PASSWORD_HERE
+
+# logs index prefix
+sbb.elasticsearch.index-prefix=logs-web-q
+
