@@ -118,7 +118,14 @@ public class LegalDongSearchController {
 			@RequestParam("legalDongCd") String legalDongCd,
 			@RequestParam(value = "pastLegalDongCd", required = false) String pastLegalDongCd,
 			@RequestParam(value = "dltDt", required = false) String dltDt,
-			@RequestParam(value = "returnUrl", required = false) String returnUrl,
+			@RequestParam(value = "field", required = false) String field,
+			@RequestParam(value = "keyword", required = false) String keyword,
+			@RequestParam(value = "dateField", required = false) String dateField,
+			@RequestParam(value = "dateFrom", required = false) String dateFrom,
+			@RequestParam(value = "dateTo", required = false) String dateTo,
+			@RequestParam(value = "useYn", required = false) String useYn,
+			@RequestParam(value = "size", required = false, defaultValue = "40") Integer size,
+			@RequestParam(value = "page", required = false, defaultValue = "0") Integer page,
 			Authentication authentication,
 			RedirectAttributes redirectAttributes) {
 		String operatorId = authentication != null ? authentication.getName() : "SYSTEM";
@@ -129,9 +136,15 @@ public class LegalDongSearchController {
 			redirectAttributes.addFlashAttribute("errorMessage", "수정 실패: " + ex.getMessage());
 		}
 
-		if (returnUrl != null && returnUrl.isBlank() == false) {
-			return "redirect:" + returnUrl;
-		}
+		// 수정 후에도 현재 검색 조건/페이지를 유지한다.
+		redirectAttributes.addAttribute("field", field);
+		redirectAttributes.addAttribute("keyword", keyword);
+		redirectAttributes.addAttribute("dateField", dateField);
+		redirectAttributes.addAttribute("dateFrom", dateFrom);
+		redirectAttributes.addAttribute("dateTo", dateTo);
+		redirectAttributes.addAttribute("useYn", useYn);
+		redirectAttributes.addAttribute("size", size);
+		redirectAttributes.addAttribute("page", page);
 		return "redirect:/admin/legal-dong/search";
 	}
 
