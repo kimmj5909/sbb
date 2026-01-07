@@ -1,5 +1,5 @@
 <html layout:decorate="~{layout}">
-<div layout:fragment="content" class="container d-flex justify-content-center align-items-center my-5" style="min-height: 60vh;">
+<div layout:fragment="content" class="container-fluid d-flex justify-content-center align-items-center my-5 px-4" style="min-height: 60vh;">
 	<form th:action="@{/user/login}" method="post" class="w-100" style="max-width: 360px;">
 		<div th:if="${param.error}">
 			<div class="alert alert-danger">

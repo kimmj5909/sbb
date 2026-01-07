@@ -1,6 +1,6 @@
 <html layout:decorate="~{layout}">
 
-<div layout:fragment="content" class="container my-3">
+<div layout:fragment="content" class="container-fluid my-3 px-4">
 	<!-- 질문 -->
 	<h2 class="border-bottom py-2" th:text="${question != null} ? ${question.subject} : '제목없음'"></h2>
 	<div class="card my-3">

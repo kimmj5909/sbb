@@ -1,5 +1,5 @@
 <html layout:decorate="~{layout}">
-<div layout:fragment="content" class="container my-3">
+<div layout:fragment="content" class="container-fluid my-3 px-4">
 	<!-- 답변 팝업 모달 -->
 	<div class="modal fade" id="repliesModal" tabindex="-1" aria-labelledby="repliesModalLabel" aria-hidden="true">
 		<div class="modal-dialog modal-lg">
