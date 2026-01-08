@@ -57,7 +57,8 @@ public class LegalDongPastMappingJdbcRepository {
 				WITH
 				old_emndn AS (
 					SELECT
-						o.legal_dong_cd AS old_emndn_cd,
+						o.legal_dong_cd AS old_emndn_cd10,
+						o.emndn_cd AS old_emndn_cd8,
 						o.ctprv_cd,
 						regexp_replace(coalesce(o.sgng_nm, ''), '\\\\s.*$', '') AS old_base_city,
 						regexp_replace(coalesce(o.emndn_nm, ''), '(읍|면|동|리|가)$', '') AS old_emndn_root
@@ -81,7 +82,8 @@ public class LegalDongPastMappingJdbcRepository {
 				emndn_candidates AS (
 					SELECT
 						n.new_emndn_cd,
-						o.old_emndn_cd,
+						o.old_emndn_cd10,
+						o.old_emndn_cd8,
 						CASE
 							WHEN n.new_base_city <> '' AND o.old_base_city <> '' AND n.new_base_city = o.old_base_city THEN 10
 							ELSE 0
@@ -95,7 +97,7 @@ public class LegalDongPastMappingJdbcRepository {
 				emndn_agg AS (
 					SELECT
 						n.new_emndn_cd,
-						count(c.old_emndn_cd) AS candidate_cnt
+						count(c.old_emndn_cd10) AS candidate_cnt
 					FROM new_emndn n
 					LEFT JOIN emndn_candidates c ON c.new_emndn_cd = n.new_emndn_cd
 					GROUP BY n.new_emndn_cd
@@ -113,11 +115,12 @@ public class LegalDongPastMappingJdbcRepository {
 				emndn_unique_map AS (
 					SELECT
 						n.new_emndn_cd,
-						(array_agg(c.old_emndn_cd ORDER BY c.score DESC, c.old_emndn_cd))[1] AS chosen_old_emndn_cd
+						(array_agg(c.old_emndn_cd10 ORDER BY c.score DESC, c.old_emndn_cd10))[1] AS chosen_old_emndn_cd10,
+						(array_agg(c.old_emndn_cd8 ORDER BY c.score DESC, c.old_emndn_cd10))[1] AS chosen_old_emndn_cd8
 					FROM new_emndn n
 					JOIN emndn_candidates c ON c.new_emndn_cd = n.new_emndn_cd
 					GROUP BY n.new_emndn_cd
-					HAVING count(c.old_emndn_cd) = 1
+					HAVING count(c.old_emndn_cd10) = 1
 				),
 				old_li AS (
 					SELECT
@@ -131,7 +134,7 @@ public class LegalDongPastMappingJdbcRepository {
 				li_expected AS (
 					SELECT
 						n.new_li_cd,
-						(m.chosen_old_emndn_cd || n.li_tail2) AS expected_old_li_cd
+						(m.chosen_old_emndn_cd8 || n.li_tail2) AS expected_old_li_cd
 					FROM new_li n
 					JOIN emndn_unique_map m ON m.new_emndn_cd = n.new_emndn_cd
 				),
@@ -165,7 +168,7 @@ public class LegalDongPastMappingJdbcRepository {
 				WITH
 				old_emndn AS (
 					SELECT
-						o.legal_dong_cd AS old_emndn_cd,
+						o.legal_dong_cd AS old_emndn_cd10,
 						o.ctprv_cd,
 						regexp_replace(coalesce(o.sgng_nm, ''), '\\\\s.*$', '') AS old_base_city,
 						regexp_replace(coalesce(o.emndn_nm, ''), '(읍|면|동|리|가)$', '') AS old_emndn_root
@@ -189,7 +192,7 @@ public class LegalDongPastMappingJdbcRepository {
 				emndn_candidates AS (
 					SELECT
 						n.new_emndn_cd,
-						o.old_emndn_cd,
+						o.old_emndn_cd10,
 						CASE
 							WHEN n.new_base_city <> '' AND o.old_base_city <> '' AND n.new_base_city = o.old_base_city THEN 10
 							ELSE 0
@@ -203,8 +206,8 @@ public class LegalDongPastMappingJdbcRepository {
 				emndn_preview AS (
 					SELECT
 						n.new_emndn_cd,
-						count(c.old_emndn_cd) AS candidate_cnt,
-						(array_agg(c.old_emndn_cd ORDER BY c.score DESC, c.old_emndn_cd))[1] AS chosen_old_emndn_cd
+						count(c.old_emndn_cd10) AS candidate_cnt,
+						(array_agg(c.old_emndn_cd10 ORDER BY c.score DESC, c.old_emndn_cd10))[1] AS chosen_old_emndn_cd10
 					FROM new_emndn n
 					LEFT JOIN emndn_candidates c ON c.new_emndn_cd = n.new_emndn_cd
 					GROUP BY n.new_emndn_cd
@@ -212,7 +215,7 @@ public class LegalDongPastMappingJdbcRepository {
 				apply_targets AS (
 					SELECT
 						e.new_emndn_cd AS new_legal_dong_cd,
-						e.chosen_old_emndn_cd AS past_legal_dong_cd
+						e.chosen_old_emndn_cd10 AS past_legal_dong_cd
 					FROM emndn_preview e
 					WHERE e.candidate_cnt = 1
 				)
@@ -235,7 +238,7 @@ public class LegalDongPastMappingJdbcRepository {
 				WITH
 				old_emndn AS (
 					SELECT
-						o.legal_dong_cd AS old_emndn_cd,
+						o.emndn_cd AS old_emndn_cd8,
 						o.ctprv_cd,
 						regexp_replace(coalesce(o.sgng_nm, ''), '\\\\s.*$', '') AS old_base_city,
 						regexp_replace(coalesce(o.emndn_nm, ''), '(읍|면|동|리|가)$', '') AS old_emndn_root
@@ -258,7 +261,7 @@ public class LegalDongPastMappingJdbcRepository {
 				emndn_candidates AS (
 					SELECT
 						n.new_emndn_cd,
-						o.old_emndn_cd,
+						o.old_emndn_cd8,
 						CASE
 							WHEN n.new_base_city <> '' AND o.old_base_city <> '' AND n.new_base_city = o.old_base_city THEN 10
 							ELSE 0
@@ -272,11 +275,11 @@ public class LegalDongPastMappingJdbcRepository {
 				emndn_unique_map AS (
 					SELECT
 						n.new_emndn_cd,
-						(array_agg(c.old_emndn_cd ORDER BY c.score DESC, c.old_emndn_cd))[1] AS chosen_old_emndn_cd
+						(array_agg(c.old_emndn_cd8 ORDER BY c.score DESC, c.old_emndn_cd8))[1] AS chosen_old_emndn_cd8
 					FROM new_emndn n
 					JOIN emndn_candidates c ON c.new_emndn_cd = n.new_emndn_cd
 					GROUP BY n.new_emndn_cd
-					HAVING count(c.old_emndn_cd) = 1
+					HAVING count(c.old_emndn_cd8) = 1
 				),
 				new_li AS (
 					SELECT
@@ -304,7 +307,7 @@ public class LegalDongPastMappingJdbcRepository {
 					FROM new_li n
 					JOIN emndn_unique_map m ON m.new_emndn_cd = n.new_emndn_cd
 					JOIN old_li ol
-					  ON ol.old_emndn_cd = m.chosen_old_emndn_cd
+					  ON ol.old_emndn_cd = m.chosen_old_emndn_cd8
 					 AND ol.li_tail2 = n.li_tail2
 				)
 				UPDATE tb_legal_dong_l t
@@ -324,4 +327,3 @@ public class LegalDongPastMappingJdbcRepository {
 	private record Stats(int newEmndnCnt, int emndnAmbiguousCnt, int emndnMissingCnt, int newLiCnt, int liMissingOldCnt) {
 	}
 }
-
