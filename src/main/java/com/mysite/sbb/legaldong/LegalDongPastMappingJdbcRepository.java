@@ -55,11 +55,31 @@ public class LegalDongPastMappingJdbcRepository {
 	private Stats loadStats(Map<String, Object> params) {
 		String sql = """
 				WITH
+				old_li_tails AS (
+					SELECT
+						substring(o.legal_dong_cd, 1, 8) AS old_emndn_cd8,
+						array_agg(DISTINCT right(o.legal_dong_cd, 2) ORDER BY right(o.legal_dong_cd, 2)) AS old_tail2s
+					FROM tb_legal_dong_l o
+					WHERE o.li_cd IS NOT NULL
+					  AND o.dlt_dt = :effDt
+					GROUP BY substring(o.legal_dong_cd, 1, 8)
+				),
+				new_li_tails AS (
+					SELECT
+						substring(n.legal_dong_cd, 1, 8) AS new_emndn_cd8,
+						array_agg(DISTINCT right(n.legal_dong_cd, 2) ORDER BY right(n.legal_dong_cd, 2)) AS new_tail2s
+					FROM tb_legal_dong_l n
+					WHERE n.li_cd IS NOT NULL
+					  AND n.cr_dt = :effDt
+					GROUP BY substring(n.legal_dong_cd, 1, 8)
+				),
 				old_emndn AS (
 					SELECT
 						o.legal_dong_cd AS old_emndn_cd10,
 						o.emndn_cd AS old_emndn_cd8,
 						o.ctprv_cd,
+						coalesce(o.sgng_nm, '') AS old_sgng_nm,
+						coalesce(o.emndn_nm, '') AS old_emndn_nm,
 						regexp_replace(coalesce(o.sgng_nm, ''), '\\\\s.*$', '') AS old_base_city,
 						regexp_replace(coalesce(o.emndn_nm, ''), '(읍|면|동|리|가)$', '') AS old_emndn_root
 					FROM tb_legal_dong_l o
@@ -72,6 +92,8 @@ public class LegalDongPastMappingJdbcRepository {
 						n.legal_dong_cd AS new_emndn_cd10,
 						n.emndn_cd AS new_emndn_cd8,
 						n.ctprv_cd,
+						coalesce(n.sgng_nm, '') AS new_sgng_nm,
+						coalesce(n.emndn_nm, '') AS new_emndn_nm,
 						regexp_replace(coalesce(n.sgng_nm, ''), '\\\\s.*$', '') AS new_base_city,
 						regexp_replace(coalesce(n.emndn_nm, ''), '(읍|면|동|리|가)$', '') AS new_emndn_root
 					FROM tb_legal_dong_l n
@@ -86,15 +108,26 @@ public class LegalDongPastMappingJdbcRepository {
 						n.new_emndn_cd8,
 						o.old_emndn_cd10,
 						o.old_emndn_cd8,
-						CASE
-							WHEN n.new_base_city <> '' AND o.old_base_city <> '' AND n.new_base_city = o.old_base_city THEN 10
-							ELSE 0
-						END AS score
+						-- 점수(정렬용)
+						-- - base_city는 조인에서 이미 동일해야 한다.
+						-- - root(읍/면/동/리/가 제거) 일치: 강한 신호
+						-- - emndn_nm 완전일치: 보조 신호
+						-- - li tail2 교집합 개수: 이름 오타/변경이 있어도 연결 가능한 핵심 신호
+						(
+							CASE WHEN o.old_emndn_root = n.new_emndn_root THEN 100 ELSE 0 END
+							+ CASE WHEN o.old_emndn_nm = n.new_emndn_nm THEN 20 ELSE 0 END
+							+ COALESCE((
+								SELECT count(*)
+								FROM unnest(COALESCE(olt.old_tail2s, ARRAY[]::text[])) a
+								JOIN unnest(COALESCE(nlt.new_tail2s, ARRAY[]::text[])) b ON a = b
+							), 0) * 5
+						) AS score
 					FROM new_emndn n
 					JOIN old_emndn o
 					  ON o.ctprv_cd = n.ctprv_cd
 					 AND o.old_base_city = n.new_base_city
-					 AND o.old_emndn_root = n.new_emndn_root
+					LEFT JOIN old_li_tails olt ON olt.old_emndn_cd8 = o.old_emndn_cd8
+					LEFT JOIN new_li_tails nlt ON nlt.new_emndn_cd8 = n.new_emndn_cd8
 				),
 				emndn_agg AS (
 					SELECT
@@ -114,15 +147,24 @@ public class LegalDongPastMappingJdbcRepository {
 					  AND n.cr_dt = :effDt
 					  AND n.past_legal_dong_cd IS NULL
 				),
+				emndn_scored AS (
+					SELECT
+						c.*,
+						row_number() OVER (PARTITION BY c.new_emndn_cd10 ORDER BY c.score DESC, c.old_emndn_cd10) AS rn,
+						max(c.score) OVER (PARTITION BY c.new_emndn_cd10) AS max_score,
+						sum(CASE WHEN c.score = max(c.score) OVER (PARTITION BY c.new_emndn_cd10) THEN 1 ELSE 0 END)
+							OVER (PARTITION BY c.new_emndn_cd10) AS top_ties
+					FROM emndn_candidates c
+				),
 				emndn_unique_map AS (
 					SELECT
-						n.new_emndn_cd8,
-						(array_agg(c.old_emndn_cd10 ORDER BY c.score DESC, c.old_emndn_cd10))[1] AS chosen_old_emndn_cd10,
-						(array_agg(c.old_emndn_cd8 ORDER BY c.score DESC, c.old_emndn_cd10))[1] AS chosen_old_emndn_cd8
-					FROM new_emndn n
-					JOIN emndn_candidates c ON c.new_emndn_cd10 = n.new_emndn_cd10
-					GROUP BY n.new_emndn_cd8
-					HAVING count(c.old_emndn_cd10) = 1
+						s.new_emndn_cd8,
+						s.old_emndn_cd10 AS chosen_old_emndn_cd10,
+						s.old_emndn_cd8 AS chosen_old_emndn_cd8
+					FROM emndn_scored s
+					WHERE s.rn = 1
+					  AND s.max_score > 0
+					  AND s.top_ties = 1
 				),
 				old_li AS (
 					SELECT
@@ -168,10 +210,30 @@ public class LegalDongPastMappingJdbcRepository {
 	private int updateEmndn(Map<String, Object> params) {
 		String sql = """
 				WITH
+				old_li_tails AS (
+					SELECT
+						substring(o.legal_dong_cd, 1, 8) AS old_emndn_cd8,
+						array_agg(DISTINCT right(o.legal_dong_cd, 2) ORDER BY right(o.legal_dong_cd, 2)) AS old_tail2s
+					FROM tb_legal_dong_l o
+					WHERE o.li_cd IS NOT NULL
+					  AND o.dlt_dt = :effDt
+					GROUP BY substring(o.legal_dong_cd, 1, 8)
+				),
+				new_li_tails AS (
+					SELECT
+						substring(n.legal_dong_cd, 1, 8) AS new_emndn_cd8,
+						array_agg(DISTINCT right(n.legal_dong_cd, 2) ORDER BY right(n.legal_dong_cd, 2)) AS new_tail2s
+					FROM tb_legal_dong_l n
+					WHERE n.li_cd IS NOT NULL
+					  AND n.cr_dt = :effDt
+					GROUP BY substring(n.legal_dong_cd, 1, 8)
+				),
 				old_emndn AS (
 					SELECT
 						o.legal_dong_cd AS old_emndn_cd10,
+						o.emndn_cd AS old_emndn_cd8,
 						o.ctprv_cd,
+						coalesce(o.emndn_nm, '') AS old_emndn_nm,
 						regexp_replace(coalesce(o.sgng_nm, ''), '\\\\s.*$', '') AS old_base_city,
 						regexp_replace(coalesce(o.emndn_nm, ''), '(읍|면|동|리|가)$', '') AS old_emndn_root
 					FROM tb_legal_dong_l o
@@ -182,7 +244,9 @@ public class LegalDongPastMappingJdbcRepository {
 				new_emndn AS (
 					SELECT
 						n.legal_dong_cd AS new_emndn_cd10,
+						n.emndn_cd AS new_emndn_cd8,
 						n.ctprv_cd,
+						coalesce(n.emndn_nm, '') AS new_emndn_nm,
 						regexp_replace(coalesce(n.sgng_nm, ''), '\\\\s.*$', '') AS new_base_city,
 						regexp_replace(coalesce(n.emndn_nm, ''), '(읍|면|동|리|가)$', '') AS new_emndn_root
 					FROM tb_legal_dong_l n
@@ -196,30 +260,43 @@ public class LegalDongPastMappingJdbcRepository {
 						n.new_emndn_cd10,
 						o.old_emndn_cd10,
 						CASE
-							WHEN n.new_base_city <> '' AND o.old_base_city <> '' AND n.new_base_city = o.old_base_city THEN 10
+							WHEN n.new_base_city <> '' AND o.old_base_city <> '' AND n.new_base_city = o.old_base_city THEN (
+								CASE WHEN o.old_emndn_root = n.new_emndn_root THEN 100 ELSE 0 END
+								+ CASE WHEN o.old_emndn_nm = n.new_emndn_nm THEN 20 ELSE 0 END
+								+ COALESCE((
+									SELECT count(*)
+									FROM unnest(COALESCE(olt.old_tail2s, ARRAY[]::text[])) a
+									JOIN unnest(COALESCE(nlt.new_tail2s, ARRAY[]::text[])) b ON a = b
+								), 0) * 5
+							)
 							ELSE 0
 						END AS score
 					FROM new_emndn n
 					JOIN old_emndn o
 					  ON o.ctprv_cd = n.ctprv_cd
 					 AND o.old_base_city = n.new_base_city
-					 AND o.old_emndn_root = n.new_emndn_root
+					LEFT JOIN old_li_tails olt ON olt.old_emndn_cd8 = o.old_emndn_cd8
+					LEFT JOIN new_li_tails nlt ON nlt.new_emndn_cd8 = n.new_emndn_cd8
 				),
-				emndn_preview AS (
+				emndn_scored AS (
 					SELECT
-						n.new_emndn_cd10,
-						count(c.old_emndn_cd10) AS candidate_cnt,
-						(array_agg(c.old_emndn_cd10 ORDER BY c.score DESC, c.old_emndn_cd10))[1] AS chosen_old_emndn_cd10
-					FROM new_emndn n
-					LEFT JOIN emndn_candidates c ON c.new_emndn_cd10 = n.new_emndn_cd10
-					GROUP BY n.new_emndn_cd10
+						c.new_emndn_cd10,
+						c.old_emndn_cd10,
+						c.score,
+						row_number() OVER (PARTITION BY c.new_emndn_cd10 ORDER BY c.score DESC, c.old_emndn_cd10) AS rn,
+						max(c.score) OVER (PARTITION BY c.new_emndn_cd10) AS max_score,
+						sum(CASE WHEN c.score = max(c.score) OVER (PARTITION BY c.new_emndn_cd10) THEN 1 ELSE 0 END)
+							OVER (PARTITION BY c.new_emndn_cd10) AS top_ties
+					FROM emndn_candidates c
 				),
 				apply_targets AS (
 					SELECT
-						e.new_emndn_cd10 AS new_legal_dong_cd,
-						e.chosen_old_emndn_cd10 AS past_legal_dong_cd
-					FROM emndn_preview e
-					WHERE e.candidate_cnt = 1
+						s.new_emndn_cd10 AS new_legal_dong_cd,
+						s.old_emndn_cd10 AS past_legal_dong_cd
+					FROM emndn_scored s
+					WHERE s.rn = 1
+					  AND s.max_score > 0
+					  AND s.top_ties = 1
 				)
 				UPDATE tb_legal_dong_l t
 				SET
@@ -238,10 +315,29 @@ public class LegalDongPastMappingJdbcRepository {
 	private int updateLi(Map<String, Object> params) {
 		String sql = """
 				WITH
+				old_li_tails AS (
+					SELECT
+						substring(o.legal_dong_cd, 1, 8) AS old_emndn_cd8,
+						array_agg(DISTINCT right(o.legal_dong_cd, 2) ORDER BY right(o.legal_dong_cd, 2)) AS old_tail2s
+					FROM tb_legal_dong_l o
+					WHERE o.li_cd IS NOT NULL
+					  AND o.dlt_dt = :effDt
+					GROUP BY substring(o.legal_dong_cd, 1, 8)
+				),
+				new_li_tails AS (
+					SELECT
+						substring(n.legal_dong_cd, 1, 8) AS new_emndn_cd8,
+						array_agg(DISTINCT right(n.legal_dong_cd, 2) ORDER BY right(n.legal_dong_cd, 2)) AS new_tail2s
+					FROM tb_legal_dong_l n
+					WHERE n.li_cd IS NOT NULL
+					  AND n.cr_dt = :effDt
+					GROUP BY substring(n.legal_dong_cd, 1, 8)
+				),
 				old_emndn AS (
 					SELECT
 						o.emndn_cd AS old_emndn_cd8,
 						o.ctprv_cd,
+						coalesce(o.emndn_nm, '') AS old_emndn_nm,
 						regexp_replace(coalesce(o.sgng_nm, ''), '\\\\s.*$', '') AS old_base_city,
 						regexp_replace(coalesce(o.emndn_nm, ''), '(읍|면|동|리|가)$', '') AS old_emndn_root
 					FROM tb_legal_dong_l o
@@ -253,6 +349,7 @@ public class LegalDongPastMappingJdbcRepository {
 					SELECT
 						n.emndn_cd AS new_emndn_cd8,
 						n.ctprv_cd,
+						coalesce(n.emndn_nm, '') AS new_emndn_nm,
 						regexp_replace(coalesce(n.sgng_nm, ''), '\\\\s.*$', '') AS new_base_city,
 						regexp_replace(coalesce(n.emndn_nm, ''), '(읍|면|동|리|가)$', '') AS new_emndn_root
 					FROM tb_legal_dong_l n
@@ -265,23 +362,43 @@ public class LegalDongPastMappingJdbcRepository {
 						n.new_emndn_cd8,
 						o.old_emndn_cd8,
 						CASE
-							WHEN n.new_base_city <> '' AND o.old_base_city <> '' AND n.new_base_city = o.old_base_city THEN 10
+							WHEN n.new_base_city <> '' AND o.old_base_city <> '' AND n.new_base_city = o.old_base_city THEN (
+								CASE WHEN o.old_emndn_root = n.new_emndn_root THEN 100 ELSE 0 END
+								+ CASE WHEN o.old_emndn_nm = n.new_emndn_nm THEN 20 ELSE 0 END
+								+ COALESCE((
+									SELECT count(*)
+									FROM unnest(COALESCE(olt.old_tail2s, ARRAY[]::text[])) a
+									JOIN unnest(COALESCE(nlt.new_tail2s, ARRAY[]::text[])) b ON a = b
+								), 0) * 5
+							)
 							ELSE 0
 						END AS score
 					FROM new_emndn n
 					JOIN old_emndn o
 					  ON o.ctprv_cd = n.ctprv_cd
 					 AND o.old_base_city = n.new_base_city
-					 AND o.old_emndn_root = n.new_emndn_root
+					LEFT JOIN old_li_tails olt ON olt.old_emndn_cd8 = o.old_emndn_cd8
+					LEFT JOIN new_li_tails nlt ON nlt.new_emndn_cd8 = n.new_emndn_cd8
+				),
+				emndn_scored AS (
+					SELECT
+						c.new_emndn_cd8,
+						c.old_emndn_cd8,
+						c.score,
+						row_number() OVER (PARTITION BY c.new_emndn_cd8 ORDER BY c.score DESC, c.old_emndn_cd8) AS rn,
+						max(c.score) OVER (PARTITION BY c.new_emndn_cd8) AS max_score,
+						sum(CASE WHEN c.score = max(c.score) OVER (PARTITION BY c.new_emndn_cd8) THEN 1 ELSE 0 END)
+							OVER (PARTITION BY c.new_emndn_cd8) AS top_ties
+					FROM emndn_candidates c
 				),
 				emndn_unique_map AS (
 					SELECT
-						n.new_emndn_cd8,
-						(array_agg(c.old_emndn_cd8 ORDER BY c.score DESC, c.old_emndn_cd8))[1] AS chosen_old_emndn_cd8
-					FROM new_emndn n
-					JOIN emndn_candidates c ON c.new_emndn_cd8 = n.new_emndn_cd8
-					GROUP BY n.new_emndn_cd8
-					HAVING count(c.old_emndn_cd8) = 1
+						s.new_emndn_cd8,
+						s.old_emndn_cd8 AS chosen_old_emndn_cd8
+					FROM emndn_scored s
+					WHERE s.rn = 1
+					  AND s.max_score > 0
+					  AND s.top_ties = 1
 				),
 				new_li AS (
 					SELECT
