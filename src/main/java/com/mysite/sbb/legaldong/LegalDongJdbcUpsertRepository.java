@@ -76,21 +76,27 @@ public class LegalDongJdbcUpsertRepository {
 					li_cd = EXCLUDED.li_cd,
 					li_nm = EXCLUDED.li_nm,
 					rank = EXCLUDED.rank,
-					cr_dt = EXCLUDED.cr_dt,
-					-- 말소일자(dlt_dt)는 "최초 확정값 유지"가 원칙이다(이력 누적 전제).
-					-- - 동일 legal_dong_cd는 중복 생성되지 않는다는 전제에서, 업서트는 정정/재업로드 상황에서도
-					--   말소일자를 과거값으로부터 덮어쓰기하지 않도록 한다.
-					-- - 단, 과거 누락 데이터(기존 dlt_dt NULL)에 대해 신규 업로드가 말소일자를 제공하면 보강한다.
-					dlt_dt = CASE
-						WHEN tb_legal_dong_l.dlt_dt IS NULL AND EXCLUDED.dlt_dt IS NOT NULL THEN EXCLUDED.dlt_dt
-						ELSE tb_legal_dong_l.dlt_dt
+					-- 생성일자(cr_dt)는 동일 코드가 여러 행으로 들어오는 입력 포맷 특성상 최소값(가장 이른 값)을 유지한다.
+					cr_dt = CASE
+						WHEN tb_legal_dong_l.cr_dt IS NULL THEN EXCLUDED.cr_dt
+						WHEN EXCLUDED.cr_dt IS NULL THEN tb_legal_dong_l.cr_dt
+						ELSE LEAST(tb_legal_dong_l.cr_dt, EXCLUDED.cr_dt)
 					END,
+					-- 말소일자(dlt_dt)는 최대값(가장 늦은 값)을 유지한다.
+					-- - 예: 과거 적재 과정에서 최신 말소일자가 누락된 경우, 이후 업로드로 보강돼야 한다.
+					dlt_dt = CASE
+						WHEN tb_legal_dong_l.dlt_dt IS NULL THEN EXCLUDED.dlt_dt
+						WHEN EXCLUDED.dlt_dt IS NULL THEN tb_legal_dong_l.dlt_dt
+						ELSE GREATEST(tb_legal_dong_l.dlt_dt, EXCLUDED.dlt_dt)
+					END,
+					-- use_yn은 최종 dlt_dt 존재 여부로만 결정한다(Y or NULL).
 					use_yn = CASE
-						-- 기존 데이터에 말소일자를 채우는 순간(기존 use_yn='Y' 포함) null로 전환한다.
-						WHEN tb_legal_dong_l.dlt_dt IS NULL AND EXCLUDED.dlt_dt IS NOT NULL THEN NULL
-						-- 말소일자가 없는 활성 데이터는 Y로 유지한다.
-						WHEN tb_legal_dong_l.dlt_dt IS NULL AND EXCLUDED.dlt_dt IS NULL THEN 'Y'
-						ELSE tb_legal_dong_l.use_yn
+						WHEN (CASE
+							WHEN tb_legal_dong_l.dlt_dt IS NULL THEN EXCLUDED.dlt_dt
+							WHEN EXCLUDED.dlt_dt IS NULL THEN tb_legal_dong_l.dlt_dt
+							ELSE GREATEST(tb_legal_dong_l.dlt_dt, EXCLUDED.dlt_dt)
+						END) IS NULL THEN 'Y'
+						ELSE NULL
 					END,
 					last_updt_dtm = EXCLUDED.last_updt_dtm,
 					last_upusr_id = EXCLUDED.last_upusr_id

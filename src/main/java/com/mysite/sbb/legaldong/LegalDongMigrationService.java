@@ -2,7 +2,9 @@ package com.mysite.sbb.legaldong;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,7 +30,6 @@ public class LegalDongMigrationService {
 
 	private final LegalDongExcelParser excelParser;
 	private final LegalDongJdbcUpsertRepository jdbcUpsertRepository;
-	private final LegalDongHistoryJdbcInsertRepository historyInsertRepository;
 
 	public LegalDongMigrationPreviewResult preview(byte[] xlsxBytes, int page, int size) {
 		LegalDongExcelParser.ParseResult parsed = parse(xlsxBytes);
@@ -62,9 +63,6 @@ public class LegalDongMigrationService {
 
 		LocalDateTime now = LocalDateTime.now();
 		int applied = jdbcUpsertRepository.upsertAll(derived.rows, operatorId, now);
-		// 이력 테이블은 누적(append-only) 적재를 수행한다.
-		// - 동일 (legal_dong_cd, cr_dt, dlt_dt) 조합은 중복 삽입되지 않는다.
-		historyInsertRepository.insertAll(derived.rows, operatorId);
 		List<String> errors = new ArrayList<>(derived.errors);
 
 		return new LegalDongMigrationApplyResult(
@@ -205,9 +203,126 @@ public class LegalDongMigrationService {
 					.build());
 		}
 
-		int upperRows = (int) derivedRows.stream().filter(r -> r.getLiCd() == null).count();
-		int lowerRows = derivedRows.size() - upperRows;
-		return new DerivedResult(derivedRows, upperRows, lowerRows, errors);
+		List<LegalDongDerivedRow> consolidated = consolidateByLegalDongCd(derivedRows, errors);
+
+		int upperRows = (int) consolidated.stream().filter(r -> r.getLiCd() == null).count();
+		int lowerRows = consolidated.size() - upperRows;
+		return new DerivedResult(consolidated, upperRows, lowerRows, errors);
+	}
+
+	/**
+	 * 엑셀 원본에는 동일한 법정동코드(legal_dong_cd)가 중복 등장할 수 있다.
+	 *
+	 * 요구사항(사용자 확인)
+	 * - 법정동코드는 고유 코드이므로 `tb_legal_dong_l`에는 1행=1코드로 유지한다.
+	 * - 따라서 업로드 데이터 내부에서 중복이 발견되면, DB 적재 전에 병합(consolidation)한다.
+	 *
+	 * 병합 규칙
+	 * - cr_dt: 가장 이른(최소) 생성일자 유지
+	 * - dlt_dt: 가장 늦은(최대) 말소일자 유지
+	 * - 나머지 컬럼: 최초 행 값을 기준으로 유지(서로 다른 값이 발견되면 경고로 기록)
+	 *
+	 * 주의
+	 * - 이 병합은 "정정"을 의미하지 않는다. 동일 코드가 여러 행으로 존재하는 입력 포맷 특성에 대한 방어 로직이다.
+	 */
+	private List<LegalDongDerivedRow> consolidateByLegalDongCd(List<LegalDongDerivedRow> rows, List<String> errors) {
+		if (rows == null || rows.isEmpty()) {
+			return List.of();
+		}
+
+		Map<String, LegalDongDerivedRow> merged = new LinkedHashMap<>();
+		java.util.Set<String> duplicatedCodes = new java.util.HashSet<>();
+		int duplicateRows = 0;
+
+		for (LegalDongDerivedRow row : rows) {
+			String code = row.getLegalDongCd();
+			if (code == null || code.isBlank()) {
+				continue;
+			}
+
+			LegalDongDerivedRow existing = merged.get(code);
+			if (existing == null) {
+				merged.put(code, row);
+				continue;
+			}
+
+			duplicateRows++;
+			duplicatedCodes.add(code);
+
+			java.time.LocalDate minCrDt = minDate(existing.getCrDt(), row.getCrDt());
+			java.time.LocalDate maxDltDt = maxDate(existing.getDltDt(), row.getDltDt());
+
+			if (notEquals(existing.getLegalDongNm(), row.getLegalDongNm())
+					|| notEquals(existing.getCtprvNm(), row.getCtprvNm())
+					|| notEquals(existing.getSgngNm(), row.getSgngNm())
+					|| notEquals(existing.getEmndnNm(), row.getEmndnNm())
+					|| notEquals(existing.getLiNm(), row.getLiNm())
+					|| notEquals(existing.getCtprvCd(), row.getCtprvCd())
+					|| notEquals(existing.getSgngCd(), row.getSgngCd())
+					|| notEquals(existing.getEmndnCd(), row.getEmndnCd())
+					|| notEquals(existing.getLiCd(), row.getLiCd())) {
+				errors.add("[중복코드 병합] 동일 legal_dong_cd=" + code + "에서 다른 메타데이터가 발견되어 첫 행 기준으로 유지합니다. "
+						+ "cr_dt=" + formatDate(minCrDt) + ", dlt_dt=" + formatDate(maxDltDt));
+			}
+
+			merged.put(code, LegalDongDerivedRow.builder()
+					.rowNumber(Math.min(existing.getRowNumber(), row.getRowNumber()))
+					.legalDongCd(existing.getLegalDongCd())
+					.legalDongNm(existing.getLegalDongNm())
+					.ctprvCd(existing.getCtprvCd())
+					.ctprvNm(existing.getCtprvNm())
+					.sgngCd(existing.getSgngCd())
+					.sgngNm(existing.getSgngNm())
+					.emndnCd(existing.getEmndnCd())
+					.emndnNm(existing.getEmndnNm())
+					.liCd(existing.getLiCd())
+					.liNm(existing.getLiNm())
+					.rank(existing.getRank())
+					.crDt(minCrDt)
+					.dltDt(maxDltDt)
+					.build());
+		}
+
+		if (duplicateRows > 0) {
+			errors.add("[중복코드 병합] 업로드 데이터에서 중복 행 " + duplicateRows + "건을 병합했습니다. "
+					+ "(병합 대상 코드 수=" + duplicatedCodes.size() + ")");
+		}
+
+		return List.copyOf(merged.values());
+	}
+
+	private boolean notEquals(String a, String b) {
+		if (a == null && b == null) {
+			return false;
+		}
+		if (a == null || b == null) {
+			return true;
+		}
+		return a.equals(b) == false;
+	}
+
+	private java.time.LocalDate minDate(java.time.LocalDate a, java.time.LocalDate b) {
+		if (a == null) {
+			return b;
+		}
+		if (b == null) {
+			return a;
+		}
+		return a.isBefore(b) ? a : b;
+	}
+
+	private java.time.LocalDate maxDate(java.time.LocalDate a, java.time.LocalDate b) {
+		if (a == null) {
+			return b;
+		}
+		if (b == null) {
+			return a;
+		}
+		return a.isAfter(b) ? a : b;
+	}
+
+	private String formatDate(java.time.LocalDate value) {
+		return value == null ? "null" : java.time.format.DateTimeFormatter.BASIC_ISO_DATE.format(value);
 	}
 
 	private String firstNonBlank(String first, String second) {

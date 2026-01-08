@@ -24,8 +24,7 @@ public class LegalDongMigrationServiceTests {
 		LegalDongExcelParser parser = new LegalDongExcelParser();
 		LegalDongMigrationService service = new LegalDongMigrationService(
 				parser,
-				new LegalDongJdbcUpsertRepository(null),
-				new LegalDongHistoryJdbcInsertRepository(null));
+				new LegalDongJdbcUpsertRepository(null));
 
 		LegalDongMigrationPreviewResult preview = service.preview(xlsx, 0, 20);
 

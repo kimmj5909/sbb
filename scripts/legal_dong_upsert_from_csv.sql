@@ -21,7 +21,7 @@
 -- 업서트 규칙(애플리케이션과 동일)
 -- - 충돌 키: legal_dong_cd(PK)
 -- - past_legal_dong_cd 및 frst_* 는 최초값 유지(UPDATE에서 제외)
--- - dlt_dt: 기존 값이 NULL이고 신규 값이 NOT NULL일 때만 갱신(과거 데이터 누락 보강)
+-- - dlt_dt: 최대값(가장 늦은 값) 유지(과거 데이터 누락 보강)
 -- - use_yn:
 --     * dlt_dt가 NULL이면 'Y'
 --     * 최종 dlt_dt가 존재하면 NULL
@@ -59,16 +59,6 @@ CREATE TEMP TABLE tmp_legal_dong_upsert (
 	dlt_dt         varchar(8)
 );
 
--- 이력 누적 테이블이 없는 환경에서도 스크립트 단독 실행이 가능하도록 방어적으로 생성한다.
-CREATE TABLE IF NOT EXISTS tb_legal_dong_l_hist (
-	legal_dong_cd  varchar(10) NOT NULL,
-	cr_dt          varchar(8)  NOT NULL,
-	dlt_dt         varchar(8)  NULL,
-	frst_wrtng_dtm timestamptz NULL,
-	frst_writr_id  varchar(100) NULL,
-	CONSTRAINT tb_legal_dong_l_hist_uk UNIQUE (legal_dong_cd, cr_dt, dlt_dt)
-);
-
 -- CSV 로드(클라이언트 경로)
 \copy tmp_legal_dong_upsert (
 	legal_dong_cd, legal_dong_nm,
@@ -90,25 +80,6 @@ SET
 	li_nm    = NULLIF(btrim(li_nm), ''),
 	cr_dt    = NULLIF(btrim(cr_dt), ''),
 	dlt_dt   = NULLIF(btrim(dlt_dt), '');
-
--- 생성/말소 기간 이력 누적(중복이면 무시)
-INSERT INTO tb_legal_dong_l_hist (
-	legal_dong_cd,
-	cr_dt,
-	dlt_dt,
-	frst_wrtng_dtm,
-	frst_writr_id
-)
-SELECT
-	t.legal_dong_cd,
-	t.cr_dt,
-	t.dlt_dt,
-	now(),
-	:'operator_id'
-FROM tmp_legal_dong_upsert t
-WHERE t.legal_dong_cd IS NOT NULL
-  AND t.cr_dt IS NOT NULL
-ON CONFLICT (legal_dong_cd, cr_dt, dlt_dt) DO NOTHING;
 
 -- 업서트
 INSERT INTO tb_legal_dong_l (
@@ -146,17 +117,26 @@ ON CONFLICT (legal_dong_cd) DO UPDATE SET
 	li_cd = EXCLUDED.li_cd,
 	li_nm = EXCLUDED.li_nm,
 	rank = EXCLUDED.rank,
-	cr_dt = EXCLUDED.cr_dt,
-	-- 말소일자(dlt_dt)는 "최초 확정값 유지"가 원칙이며, 누락(NULL)만 보강한다.
-	dlt_dt = CASE
-		WHEN tb_legal_dong_l.dlt_dt IS NULL AND EXCLUDED.dlt_dt IS NOT NULL THEN EXCLUDED.dlt_dt
-		ELSE tb_legal_dong_l.dlt_dt
+	-- 생성일자(cr_dt)는 최소값(가장 이른 값)을 유지한다.
+	cr_dt = CASE
+		WHEN tb_legal_dong_l.cr_dt IS NULL THEN EXCLUDED.cr_dt
+		WHEN EXCLUDED.cr_dt IS NULL THEN tb_legal_dong_l.cr_dt
+		ELSE LEAST(tb_legal_dong_l.cr_dt, EXCLUDED.cr_dt)
 	END,
-	-- use_yn은 누락 보강 시점에만 정리한다.
+	-- 말소일자(dlt_dt)는 최대값(가장 늦은 값)을 유지한다.
+	dlt_dt = CASE
+		WHEN tb_legal_dong_l.dlt_dt IS NULL THEN EXCLUDED.dlt_dt
+		WHEN EXCLUDED.dlt_dt IS NULL THEN tb_legal_dong_l.dlt_dt
+		ELSE GREATEST(tb_legal_dong_l.dlt_dt, EXCLUDED.dlt_dt)
+	END,
+	-- use_yn은 최종 dlt_dt 존재 여부로만 결정한다(Y or NULL).
 	use_yn = CASE
-		WHEN tb_legal_dong_l.dlt_dt IS NULL AND EXCLUDED.dlt_dt IS NOT NULL THEN NULL
-		WHEN tb_legal_dong_l.dlt_dt IS NULL AND EXCLUDED.dlt_dt IS NULL THEN 'Y'
-		ELSE tb_legal_dong_l.use_yn
+		WHEN (CASE
+			WHEN tb_legal_dong_l.dlt_dt IS NULL THEN EXCLUDED.dlt_dt
+			WHEN EXCLUDED.dlt_dt IS NULL THEN tb_legal_dong_l.dlt_dt
+			ELSE GREATEST(tb_legal_dong_l.dlt_dt, EXCLUDED.dlt_dt)
+		END) IS NULL THEN 'Y'
+		ELSE NULL
 	END,
 	last_updt_dtm = now(),
 	last_upusr_id = :'operator_id';

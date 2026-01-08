@@ -23,6 +23,9 @@
 - DB: `tb_legal_dong_l`
   - 기동 시 테이블 없으면 자동 생성(`CREATE TABLE IF NOT EXISTS`) + 컬럼 보강
   - 업서트는 JDBC batch + `ON CONFLICT`
+  - 동일 `legal_dong_cd` 중복 입력 방어:
+    - 업로드 데이터 내부에서 중복 행을 병합(cr_dt 최소값, dlt_dt 최대값) 후 적재
+    - DB 업서트에서도 동일 규칙(LEAST/GREATEST)으로 말소일 누락/불일치 보강
   - `dlt_dt`가 null일 때 PostgreSQL 파라미터 타입추론 문제 방지:
     - SQL `CAST(:dltDt AS varchar)` + 바인딩 `Types.VARCHAR`
 - 검색: `/admin/legal-dong/search`
@@ -35,13 +38,13 @@
 - `scripts/legal_dong_upsert_from_csv.sql`
   - psql `\\copy`로 CSV 로드 후 `tb_legal_dong_l`에 업서트
   - CSV는 관리자 화면에서 내려받은 `*.derived.csv` 사용
+- `scripts/legal_dong_past_mapping_preview.sql`
+  - 시행일(효력일) 기준으로 과거법정동코드(past_legal_dong_cd) 자동 매핑 후보/애매/누락 케이스를 조회
+  - 하단의 UPDATE(주석 처리)를 사용해 유니크 매핑만 반영 가능
 
 ## Elasticsearch(로그 콘솔) 설정
-- 외부 설정 파일로 관리(소스에서 비밀번호 하드코딩하지 않음):
-  - `config/application.properties` (gitignore 처리)
-  - 예시: `config/application.properties.example`
-- 실행 환경변수 방식도 가능:
-  - `SBB_ELASTICSEARCH_USERNAME`, `SBB_ELASTICSEARCH_PASSWORD`
+- 사용자 요청으로 **`src/main/resources/application.properties`에 ES 계정/패스워드가 하드코딩되어 있으며, 자동 수정 금지**.
+  - (민감정보이므로 이 문서에는 값을 기록하지 않음)
 
 ## 빌드/테스트 메모
 - 전체 `./gradlew test`는 PostgreSQL 미기동이면 `SbbApplicationTests`가 실패할 수 있음.
@@ -59,4 +62,3 @@
 - `279a08b` CHANGELOG에서 ES는 로그용으로만 정리(문서)
 - `8329423` 인라인 입력(과거코드/말소일자) 숫자 제한 강화
 - `650fb9a` ES 비밀번호 외부 설정(config)로 분리(.gitignore + example)
-
