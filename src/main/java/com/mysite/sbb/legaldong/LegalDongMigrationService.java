@@ -30,6 +30,7 @@ public class LegalDongMigrationService {
 
 	private final LegalDongExcelParser excelParser;
 	private final LegalDongJdbcUpsertRepository jdbcUpsertRepository;
+	private final LegalDongPastMappingService pastMappingService;
 
 	public LegalDongMigrationPreviewResult preview(byte[] xlsxBytes, int page, int size) {
 		LegalDongExcelParser.ParseResult parsed = parse(xlsxBytes);
@@ -65,11 +66,24 @@ public class LegalDongMigrationService {
 		int applied = jdbcUpsertRepository.upsertAll(derived.rows, operatorId, now);
 		List<String> errors = new ArrayList<>(derived.errors);
 
+		// 과거법정동코드(past_legal_dong_cd) 자동 반영
+		// - 시행일(=new.cr_dt) 기준으로 old.dlt_dt = 시행일인 "말소 코드"만 과거 코드 후보로 사용한다.
+		// - 애매 케이스(후보>1) 또는 누락(0)은 자동 반영하지 않고, 별도 조회/수정 대상으로 남긴다.
+		List<LegalDongPastMappingApplyResult> pastMappingResults = List.of();
+		if (pastMappingService != null) {
+			java.util.Set<String> effDts = derived.rows.stream()
+					.map(r -> r.getCrDt() == null ? null : java.time.format.DateTimeFormatter.BASIC_ISO_DATE.format(r.getCrDt()))
+					.filter(v -> v != null && v.isBlank() == false)
+					.collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+			pastMappingResults = pastMappingService.applyForEffectiveDates(effDts, operatorId);
+		}
+
 		return new LegalDongMigrationApplyResult(
 				parsed.getRows().size(),
 				applied,
 				derived.upperRows,
 				derived.lowerRows,
+				pastMappingResults,
 				errors);
 	}
 

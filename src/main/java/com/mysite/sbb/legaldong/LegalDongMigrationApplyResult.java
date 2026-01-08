@@ -19,6 +19,6 @@ public class LegalDongMigrationApplyResult {
 	int appliedRows;
 	int upperRows;
 	int lowerRows;
+	List<LegalDongPastMappingApplyResult> pastMappingResults;
 	List<String> errors;
 }
-

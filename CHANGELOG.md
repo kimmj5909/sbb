@@ -1,5 +1,8 @@
 # 변경 이력
 
+## 2026-01-08
+- 법정동 마이그레이션 DB 적용 시, 시행일(cr_dt) 기준으로 신규 코드의 `past_legal_dong_cd`를 자동 업데이트하도록 반영(유니크 매핑만 자동 적용, 애매/누락은 미반영).
+
 ## 2026-01-07
 - 법정동 마이그레이션 미리보기 결과를 CSV로 다운로드할 수 있도록 `/admin/legal-dong/migration/preview/csv` 엔드포인트와 UI 버튼을 추가.
 - 미리보기 CSV를 psql `\\copy`로 적재해 `tb_legal_dong_l`에 `ON CONFLICT` 업서트하는 스크립트 `scripts/legal_dong_upsert_from_csv.sql`을 추가.
