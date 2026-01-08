@@ -147,14 +147,18 @@ public class LegalDongPastMappingJdbcRepository {
 					  AND n.cr_dt = :effDt
 					  AND n.past_legal_dong_cd IS NULL
 				),
-				emndn_scored AS (
+				emndn_ranked AS (
 					SELECT
 						c.*,
 						row_number() OVER (PARTITION BY c.new_emndn_cd10 ORDER BY c.score DESC, c.old_emndn_cd10) AS rn,
-						max(c.score) OVER (PARTITION BY c.new_emndn_cd10) AS max_score,
-						sum(CASE WHEN c.score = max(c.score) OVER (PARTITION BY c.new_emndn_cd10) THEN 1 ELSE 0 END)
-							OVER (PARTITION BY c.new_emndn_cd10) AS top_ties
+						max(c.score) OVER (PARTITION BY c.new_emndn_cd10) AS max_score
 					FROM emndn_candidates c
+				),
+				emndn_scored AS (
+					SELECT
+						r.*,
+						sum(CASE WHEN r.score = r.max_score THEN 1 ELSE 0 END) OVER (PARTITION BY r.new_emndn_cd10) AS top_ties
+					FROM emndn_ranked r
 				),
 				emndn_unique_map AS (
 					SELECT
@@ -278,16 +282,20 @@ public class LegalDongPastMappingJdbcRepository {
 					LEFT JOIN old_li_tails olt ON olt.old_emndn_cd8 = o.old_emndn_cd8
 					LEFT JOIN new_li_tails nlt ON nlt.new_emndn_cd8 = n.new_emndn_cd8
 				),
-				emndn_scored AS (
+				emndn_ranked AS (
 					SELECT
 						c.new_emndn_cd10,
 						c.old_emndn_cd10,
 						c.score,
 						row_number() OVER (PARTITION BY c.new_emndn_cd10 ORDER BY c.score DESC, c.old_emndn_cd10) AS rn,
-						max(c.score) OVER (PARTITION BY c.new_emndn_cd10) AS max_score,
-						sum(CASE WHEN c.score = max(c.score) OVER (PARTITION BY c.new_emndn_cd10) THEN 1 ELSE 0 END)
-							OVER (PARTITION BY c.new_emndn_cd10) AS top_ties
+						max(c.score) OVER (PARTITION BY c.new_emndn_cd10) AS max_score
 					FROM emndn_candidates c
+				),
+				emndn_scored AS (
+					SELECT
+						r.*,
+						sum(CASE WHEN r.score = r.max_score THEN 1 ELSE 0 END) OVER (PARTITION BY r.new_emndn_cd10) AS top_ties
+					FROM emndn_ranked r
 				),
 				apply_targets AS (
 					SELECT
@@ -380,16 +388,20 @@ public class LegalDongPastMappingJdbcRepository {
 					LEFT JOIN old_li_tails olt ON olt.old_emndn_cd8 = o.old_emndn_cd8
 					LEFT JOIN new_li_tails nlt ON nlt.new_emndn_cd8 = n.new_emndn_cd8
 				),
-				emndn_scored AS (
+				emndn_ranked AS (
 					SELECT
 						c.new_emndn_cd8,
 						c.old_emndn_cd8,
 						c.score,
 						row_number() OVER (PARTITION BY c.new_emndn_cd8 ORDER BY c.score DESC, c.old_emndn_cd8) AS rn,
-						max(c.score) OVER (PARTITION BY c.new_emndn_cd8) AS max_score,
-						sum(CASE WHEN c.score = max(c.score) OVER (PARTITION BY c.new_emndn_cd8) THEN 1 ELSE 0 END)
-							OVER (PARTITION BY c.new_emndn_cd8) AS top_ties
+						max(c.score) OVER (PARTITION BY c.new_emndn_cd8) AS max_score
 					FROM emndn_candidates c
+				),
+				emndn_scored AS (
+					SELECT
+						r.*,
+						sum(CASE WHEN r.score = r.max_score THEN 1 ELSE 0 END) OVER (PARTITION BY r.new_emndn_cd8) AS top_ties
+					FROM emndn_ranked r
 				),
 				emndn_unique_map AS (
 					SELECT
