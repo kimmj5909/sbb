@@ -4,6 +4,7 @@
 - 법정동 마이그레이션 DB 적용 시, 시행일(cr_dt) 기준으로 신규 코드의 `past_legal_dong_cd`를 자동 업데이트하도록 반영(유니크 매핑만 자동 적용, 애매/누락은 미반영).
 - DevTools RestartClassLoader 환경에서 간헐적으로 `ClassNotFoundException`이 발생하는 이슈가 있어, `spring-boot-devtools` 의존성을 제거해 기동 안정성을 확보(템플릿 캐시는 `spring.thymeleaf.cache=false`로 유지).
 - 법정동 마이그레이션 "적용 결과"를 업서트 대상/변경 건수 중심으로 요약하고(신규 추가/말소일자 업데이트 등), 상세 내역은 리스트 형태로 출력하도록 UI/서비스를 정리.
+- 운영 환경에서 "말소/생성되는 코드만" 적재하는 배치를 위해 델타 CSV 업서트 + 시행일 기준 past 자동 반영 스크립트(`scripts/legal_dong_upsert_delta_from_csv.sql`)를 추가.
 
 ## 2026-01-07
 - 법정동 마이그레이션 미리보기 결과를 CSV로 다운로드할 수 있도록 `/admin/legal-dong/migration/preview/csv` 엔드포인트와 UI 버튼을 추가.
