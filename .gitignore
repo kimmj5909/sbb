@@ -61,3 +61,6 @@ openjdk-23.0.2_linux-x64_bin.tar
 ### local config (secrets) ###
 config/application.properties
 config/application-*.properties
+
+### local data files ###
+*.xlsx
