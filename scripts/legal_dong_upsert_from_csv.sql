@@ -59,6 +59,16 @@ CREATE TEMP TABLE tmp_legal_dong_upsert (
 	dlt_dt         varchar(8)
 );
 
+-- 이력 누적 테이블이 없는 환경에서도 스크립트 단독 실행이 가능하도록 방어적으로 생성한다.
+CREATE TABLE IF NOT EXISTS tb_legal_dong_l_hist (
+	legal_dong_cd  varchar(10) NOT NULL,
+	cr_dt          varchar(8)  NOT NULL,
+	dlt_dt         varchar(8)  NULL,
+	frst_wrtng_dtm timestamptz NULL,
+	frst_writr_id  varchar(100) NULL,
+	CONSTRAINT tb_legal_dong_l_hist_uk UNIQUE (legal_dong_cd, cr_dt, dlt_dt)
+);
+
 -- CSV 로드(클라이언트 경로)
 \copy tmp_legal_dong_upsert (
 	legal_dong_cd, legal_dong_nm,
@@ -80,6 +90,25 @@ SET
 	li_nm    = NULLIF(btrim(li_nm), ''),
 	cr_dt    = NULLIF(btrim(cr_dt), ''),
 	dlt_dt   = NULLIF(btrim(dlt_dt), '');
+
+-- 생성/말소 기간 이력 누적(중복이면 무시)
+INSERT INTO tb_legal_dong_l_hist (
+	legal_dong_cd,
+	cr_dt,
+	dlt_dt,
+	frst_wrtng_dtm,
+	frst_writr_id
+)
+SELECT
+	t.legal_dong_cd,
+	t.cr_dt,
+	t.dlt_dt,
+	now(),
+	:'operator_id'
+FROM tmp_legal_dong_upsert t
+WHERE t.legal_dong_cd IS NOT NULL
+  AND t.cr_dt IS NOT NULL
+ON CONFLICT (legal_dong_cd, cr_dt, dlt_dt) DO NOTHING;
 
 -- 업서트
 INSERT INTO tb_legal_dong_l (

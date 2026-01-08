@@ -22,7 +22,10 @@ public class LegalDongMigrationServiceTests {
 		byte[] xlsx = createSampleWorkbook();
 
 		LegalDongExcelParser parser = new LegalDongExcelParser();
-		LegalDongMigrationService service = new LegalDongMigrationService(parser, new LegalDongJdbcUpsertRepository(null));
+		LegalDongMigrationService service = new LegalDongMigrationService(
+				parser,
+				new LegalDongJdbcUpsertRepository(null),
+				new LegalDongHistoryJdbcInsertRepository(null));
 
 		LegalDongMigrationPreviewResult preview = service.preview(xlsx, 0, 20);
 

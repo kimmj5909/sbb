@@ -7,6 +7,7 @@
 - 템플릿 전반의 본문 컨테이너를 `container-fluid`로 확장해 테이블 줄바꿈/폭 부족 이슈를 완화.
 - Elasticsearch 비밀번호를 소스(`src/main/resources/application.properties`)에 하드코딩하지 않고 로컬 외부 설정(`config/application.properties`)으로 관리할 수 있도록 예시 파일과 `.gitignore`를 추가.
 - Codex 작업 컨텍스트를 보존하기 위한 `CODEX_SESSION.md`를 추가.
+- `legal_dong_cd` 단위 스냅샷(`tb_legal_dong_l`)과 별개로 생성/말소 기간 이력을 누적 보존하기 위해 `tb_legal_dong_l_hist`를 추가하고, 마이그레이션/CSV 적재 시 이력 테이블에 INSERT(중복 무시)하도록 개선.
 
 ## 2026-01-06
 - 법정동 검색/조회 화면(`/admin/legal-dong/search`)을 DB 실시간 조회(`tb_legal_dong_l`) 방식으로 제공하고, 별도 색인/동기화 작업 없이 최신 데이터를 즉시 반영하도록 정리.

@@ -27,6 +27,12 @@ import lombok.RequiredArgsConstructor;
  * - 기존 요구사항/데이터 특성상 생성/말소일자는 "yyyyMMdd(8자리)" 문자열로 관리한다.
  * - 따라서 cr_dt/dlt_dt 컬럼은 `varchar(8)`로 생성한다.
  * - 검색(범위 조건)에서는 `to_date(cr_dt, 'YYYYMMDD')` 형태로 변환해 비교한다.
+ *
+ * 이력 관리
+ * - `legal_dong_cd` 자체는 고유 코드이므로, 코드 마스터(tb_legal_dong_l)는 1행=1코드로 유지한다.
+ * - 다만 실무 데이터(예: 행정구역 개편)에서는 같은 법정동코드가 서로 다른 생성/말소 기간 조합으로 반복 등장할 수 있다.
+ * - 이를 보존하기 위해 (legal_dong_cd, cr_dt, dlt_dt) 기준의 이력 테이블(tb_legal_dong_l_hist)을 별도로 둔다.
+ * - 이력 테이블은 "누적"이 원칙이며, 동일 키(legal_dong_cd, cr_dt, dlt_dt)는 중복 삽입되지 않게 유니크로 막는다.
  */
 public class LegalDongSchemaInitializer {
 
@@ -65,6 +71,18 @@ public class LegalDongSchemaInitializer {
 				""";
 
 		jdbcTemplate.execute(ddl);
+
+		String historyDdl = """
+				CREATE TABLE IF NOT EXISTS tb_legal_dong_l_hist (
+					legal_dong_cd  varchar(10) NOT NULL,
+					cr_dt          varchar(8)  NOT NULL,
+					dlt_dt         varchar(8)  NULL,
+					frst_wrtng_dtm timestamptz NULL,
+					frst_writr_id  varchar(100) NULL,
+					CONSTRAINT tb_legal_dong_l_hist_uk UNIQUE (legal_dong_cd, cr_dt, dlt_dt)
+				);
+				""";
+		jdbcTemplate.execute(historyDdl);
 
 		// 과거에 생성된 테이블(또는 수동 DDL)에는 일부 컬럼이 빠져 있을 수 있어, 필수 컬럼은 방어적으로 보강한다.
 		// - 관리자 검색/마이그레이션에서 공통으로 참조하는 컬럼을 대상으로 한다.

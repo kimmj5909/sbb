@@ -28,6 +28,7 @@ public class LegalDongMigrationService {
 
 	private final LegalDongExcelParser excelParser;
 	private final LegalDongJdbcUpsertRepository jdbcUpsertRepository;
+	private final LegalDongHistoryJdbcInsertRepository historyInsertRepository;
 
 	public LegalDongMigrationPreviewResult preview(byte[] xlsxBytes, int page, int size) {
 		LegalDongExcelParser.ParseResult parsed = parse(xlsxBytes);
@@ -61,6 +62,9 @@ public class LegalDongMigrationService {
 
 		LocalDateTime now = LocalDateTime.now();
 		int applied = jdbcUpsertRepository.upsertAll(derived.rows, operatorId, now);
+		// 이력 테이블은 누적(append-only) 적재를 수행한다.
+		// - 동일 (legal_dong_cd, cr_dt, dlt_dt) 조합은 중복 삽입되지 않는다.
+		historyInsertRepository.insertAll(derived.rows, operatorId);
 		List<String> errors = new ArrayList<>(derived.errors);
 
 		return new LegalDongMigrationApplyResult(
