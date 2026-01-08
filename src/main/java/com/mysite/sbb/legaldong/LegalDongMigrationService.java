@@ -3,6 +3,7 @@ package com.mysite.sbb.legaldong;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,7 @@ public class LegalDongMigrationService {
 
 	private final LegalDongExcelParser excelParser;
 	private final LegalDongJdbcUpsertRepository jdbcUpsertRepository;
+	private final LegalDongJdbcSnapshotRepository snapshotRepository;
 	private final LegalDongPastMappingService pastMappingService;
 
 	public LegalDongMigrationPreviewResult preview(byte[] xlsxBytes, int page, int size) {
@@ -62,29 +64,168 @@ public class LegalDongMigrationService {
 		LegalDongExcelParser.ParseResult parsed = parse(xlsxBytes);
 		DerivedResult derived = deriveRows(parsed.getRows(), parsed.getErrors());
 
+		UpsertChangeSummary upsertChangeSummary = summarizeUpsertChanges(derived.rows);
+
 		LocalDateTime now = LocalDateTime.now();
-		int applied = jdbcUpsertRepository.upsertAll(derived.rows, operatorId, now);
 		List<String> errors = new ArrayList<>(derived.errors);
+		jdbcUpsertRepository.upsertAll(derived.rows, operatorId, now);
 
 		// 과거법정동코드(past_legal_dong_cd) 자동 반영
 		// - 시행일(=new.cr_dt) 기준으로 old.dlt_dt = 시행일인 "말소 코드"만 과거 코드 후보로 사용한다.
 		// - 애매 케이스(후보>1) 또는 누락(0)은 자동 반영하지 않고, 별도 조회/수정 대상으로 남긴다.
-		List<LegalDongPastMappingApplyResult> pastMappingResults = List.of();
+		int pastMappedEmndn = 0;
+		int pastMappedLi = 0;
 		if (pastMappingService != null) {
 			java.util.Set<String> effDts = derived.rows.stream()
 					.map(r -> r.getCrDt() == null ? null : java.time.format.DateTimeFormatter.BASIC_ISO_DATE.format(r.getCrDt()))
 					.filter(v -> v != null && v.isBlank() == false)
-					.collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
-			pastMappingResults = pastMappingService.applyForEffectiveDates(effDts, operatorId);
+					.collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+			List<LegalDongPastMappingApplyResult> mappingResults = pastMappingService.applyForEffectiveDates(effDts, operatorId);
+			for (LegalDongPastMappingApplyResult r : mappingResults) {
+				pastMappedEmndn += r.getEmndnUpdatedCnt();
+				pastMappedLi += r.getLiUpdatedCnt();
+			}
+		}
+
+		List<String> updateDetails = new ArrayList<>();
+		updateDetails.add("업서트 대상: " + upsertChangeSummary.upsertTargetRows + "건");
+		if (upsertChangeSummary.breakdownAvailable) {
+			updateDetails.add("업데이트 완료: " + upsertChangeSummary.changedRows + "건"
+					+ " (신규코드 추가 " + upsertChangeSummary.insertedRows + "건"
+					+ ", 기존코드 업데이트 " + upsertChangeSummary.updatedRows + "건"
+					+ ", 말소일자 업데이트 " + upsertChangeSummary.dltDtUpdatedRows + "건)");
+		} else {
+			updateDetails.add("업데이트 완료: " + upsertChangeSummary.changedRows + "건 (상세 분류 불가)");
+		}
+		if (upsertChangeSummary.noChangeRows > 0) {
+			updateDetails.add("변경 없음(업서트 제외): " + upsertChangeSummary.noChangeRows + "건");
+		}
+		if (upsertChangeSummary.breakdownWarning != null) {
+			updateDetails.add(upsertChangeSummary.breakdownWarning);
+		}
+		if (pastMappedEmndn > 0 || pastMappedLi > 0) {
+			updateDetails.add("과거법정동코드 반영: 읍면동 " + pastMappedEmndn + "건, 리 " + pastMappedLi + "건");
 		}
 
 		return new LegalDongMigrationApplyResult(
 				parsed.getRows().size(),
-				applied,
-				derived.upperRows,
-				derived.lowerRows,
-				pastMappingResults,
+				upsertChangeSummary.upsertTargetRows,
+				upsertChangeSummary.changedRows,
+				upsertChangeSummary.insertedRows,
+				upsertChangeSummary.updatedRows,
+				upsertChangeSummary.dltDtUpdatedRows,
+				updateDetails,
 				errors);
+	}
+
+	private UpsertChangeSummary summarizeUpsertChanges(List<LegalDongDerivedRow> upsertRows) {
+		if (upsertRows == null || upsertRows.isEmpty()) {
+			return new UpsertChangeSummary(0, 0, 0, 0, 0, 0, true, null);
+		}
+
+		List<String> codes = upsertRows.stream()
+				.map(LegalDongDerivedRow::getLegalDongCd)
+				.filter(v -> v != null && v.isBlank() == false)
+				.map(String::trim)
+				.toList();
+
+		Map<String, LegalDongJdbcSnapshotRepository.SnapshotRow> existing;
+		try {
+			existing = snapshotRepository.findByLegalDongCds(codes);
+		} catch (Exception ex) {
+			// 스냅샷 조회 실패가 마이그레이션 자체를 막지 않도록, "업서트 대상=변경"으로만 요약하고 상세 분류는 생략한다.
+			return new UpsertChangeSummary(upsertRows.size(), upsertRows.size(), 0, 0, 0, 0, false,
+					"[주의] 기존 데이터 스냅샷 조회 실패로 상세 분류를 생략했습니다: " + ex.getMessage());
+		}
+
+		int inserted = 0;
+		int updated = 0;
+		int dltUpdated = 0;
+		int noChange = 0;
+
+		for (LegalDongDerivedRow row : upsertRows) {
+			String code = row.getLegalDongCd();
+			if (code == null || code.isBlank()) {
+				continue;
+			}
+			LegalDongJdbcSnapshotRepository.SnapshotRow before = existing.get(code);
+			if (before == null) {
+				inserted++;
+				if (toYyyyMmDd(row.getDltDt()) != null) {
+					dltUpdated++;
+				}
+				continue;
+			}
+
+			String incomingCrDt = toYyyyMmDd(row.getCrDt());
+			String incomingDltDt = toYyyyMmDd(row.getDltDt());
+
+			boolean dltWillChange = compareMaxChange(before.dltDt(), incomingDltDt);
+			boolean crWillChange = compareMinChange(before.crDt(), incomingCrDt);
+			boolean metaWillChange = notEquals(before.legalDongNm(), row.getLegalDongNm())
+					|| notEquals(before.ctprvCd(), row.getCtprvCd())
+					|| notEquals(before.ctprvNm(), row.getCtprvNm())
+					|| notEquals(before.sgngCd(), row.getSgngCd())
+					|| notEquals(before.sgngNm(), row.getSgngNm())
+					|| notEquals(before.emndnCd(), row.getEmndnCd())
+					|| notEquals(before.emndnNm(), row.getEmndnNm())
+					|| notEquals(before.liCd(), row.getLiCd())
+					|| notEquals(before.liNm(), row.getLiNm())
+					|| (before.rank() == null ? row.getRank() != null : before.rank().equals(row.getRank()) == false);
+
+			// 업서트 규칙상 use_yn은 dlt_dt 결과로 결정되므로, dlt 변화가 있으면 포함한다.
+			boolean willChange = dltWillChange || crWillChange || metaWillChange;
+			if (willChange == false) {
+				noChange++;
+				continue;
+			}
+
+			updated++;
+			if (dltWillChange) {
+				dltUpdated++;
+			}
+		}
+
+		int upsertTarget = upsertRows.size();
+		int changed = inserted + updated;
+		return new UpsertChangeSummary(upsertTarget, changed, inserted, updated, dltUpdated, noChange, true, null);
+	}
+
+	private boolean compareMaxChange(String before, String incoming) {
+		// dlt_dt는 GREATEST 규칙이므로, incoming이 더 크면 변경된다.
+		if (before == null) {
+			return incoming != null;
+		}
+		if (incoming == null) {
+			return false;
+		}
+		return incoming.compareTo(before) > 0;
+	}
+
+	private boolean compareMinChange(String before, String incoming) {
+		// cr_dt는 LEAST 규칙이므로, incoming이 더 작으면 변경된다.
+		if (before == null) {
+			return incoming != null;
+		}
+		if (incoming == null) {
+			return false;
+		}
+		return incoming.compareTo(before) < 0;
+	}
+
+	private String toYyyyMmDd(java.time.LocalDate value) {
+		return value == null ? null : java.time.format.DateTimeFormatter.BASIC_ISO_DATE.format(value);
+	}
+
+	private record UpsertChangeSummary(
+			int upsertTargetRows,
+			int changedRows,
+			int insertedRows,
+			int updatedRows,
+			int dltDtUpdatedRows,
+			int noChangeRows,
+			boolean breakdownAvailable,
+			String breakdownWarning) {
 	}
 
 	private LegalDongExcelParser.ParseResult parse(byte[] xlsxBytes) {

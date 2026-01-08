@@ -25,6 +25,7 @@ public class LegalDongMigrationServiceTests {
 		LegalDongMigrationService service = new LegalDongMigrationService(
 				parser,
 				new LegalDongJdbcUpsertRepository(null),
+				null,
 				null);
 
 		LegalDongMigrationPreviewResult preview = service.preview(xlsx, 0, 20);

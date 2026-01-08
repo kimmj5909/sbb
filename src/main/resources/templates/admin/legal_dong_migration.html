@@ -151,20 +151,13 @@
 		<div class="alert alert-success">
 			<div class="fw-semibold">DB 반영 완료</div>
 			<div class="small">
-				<span th:text="'원본 ' + ${result.totalRows} + '행, 반영 ' + ${result.appliedRows} + '행'"></span>
-				<span class="ms-2" th:text="'(상위 ' + ${result.upperRows} + ', 하위 ' + ${result.lowerRows} + ')'"></span>
+				<span th:text="'업서트 대상 ' + ${result.upsertTargetRows} + '건 중 ' + ${result.changedRows} + '건 업데이트 완료'"></span>
 			</div>
-			<div th:if="${result.pastMappingResults != null and #lists.isEmpty(result.pastMappingResults) == false}" class="mt-2 small">
-				<div class="fw-semibold mb-1">과거법정동코드 자동 매핑 결과</div>
+			<div th:if="${result.updateDetails != null and #lists.isEmpty(result.updateDetails) == false}" class="mt-2 small">
+				<div class="fw-semibold mb-1">업데이트 내역</div>
 				<ul class="mb-0">
-					<li th:each="m : ${result.pastMappingResults}">
-						<span th:text="'시행일 ' + ${m.effDt} + ' / 신규(읍면동) ' + ${m.newEmndnCnt} + '건, 업데이트 ' + ${m.emndnUpdatedCnt} + '건, 애매 ' + ${m.emndnAmbiguousCnt} + '건, 누락 ' + ${m.emndnMissingCnt} + '건'"></span>
-						<span class="ms-2" th:text="'/ 신규(하위) ' + ${m.newLiCnt} + '건, 업데이트 ' + ${m.liUpdatedCnt} + '건, old누락 ' + ${m.liMissingOldCnt} + '건'"></span>
-					</li>
+					<li th:each="d : ${result.updateDetails}" th:text="${d}"></li>
 				</ul>
-				<div class="form-text">
-					애매/누락 케이스는 자동 반영하지 않습니다. 확인용 SQL: <code>scripts/legal_dong_past_mapping_preview.sql</code>
-				</div>
 			</div>
 			<div class="mt-2">
 				<a class="btn btn-sm btn-outline-dark" th:href="@{/admin/legal-dong/search}">법정동 검색/조회</a>

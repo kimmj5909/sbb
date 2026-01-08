@@ -16,9 +16,11 @@ import lombok.Value;
  */
 public class LegalDongMigrationApplyResult {
 	int totalRows;
-	int appliedRows;
-	int upperRows;
-	int lowerRows;
-	List<LegalDongPastMappingApplyResult> pastMappingResults;
+	int upsertTargetRows;
+	int changedRows;
+	int insertedRows;
+	int updatedRows;
+	int dltDtUpdatedRows;
+	List<String> updateDetails;
 	List<String> errors;
 }
