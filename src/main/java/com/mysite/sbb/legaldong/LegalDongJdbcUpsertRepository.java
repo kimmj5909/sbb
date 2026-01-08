@@ -77,7 +77,10 @@ public class LegalDongJdbcUpsertRepository {
 					li_nm = EXCLUDED.li_nm,
 					rank = EXCLUDED.rank,
 					cr_dt = EXCLUDED.cr_dt,
-					-- 말소일자(dlt_dt)는 기존 값이 null이고, 신규 업로드(엑셀) 행에 말소일자가 있을 때만 갱신한다.
+					-- 말소일자(dlt_dt)는 "최초 확정값 유지"가 원칙이다(이력 누적 전제).
+					-- - 동일 legal_dong_cd는 중복 생성되지 않는다는 전제에서, 업서트는 정정/재업로드 상황에서도
+					--   말소일자를 과거값으로부터 덮어쓰기하지 않도록 한다.
+					-- - 단, 과거 누락 데이터(기존 dlt_dt NULL)에 대해 신규 업로드가 말소일자를 제공하면 보강한다.
 					dlt_dt = CASE
 						WHEN tb_legal_dong_l.dlt_dt IS NULL AND EXCLUDED.dlt_dt IS NOT NULL THEN EXCLUDED.dlt_dt
 						ELSE tb_legal_dong_l.dlt_dt

@@ -21,11 +21,10 @@
 -- 업서트 규칙(애플리케이션과 동일)
 -- - 충돌 키: legal_dong_cd(PK)
 -- - past_legal_dong_cd 및 frst_* 는 최초값 유지(UPDATE에서 제외)
--- - dlt_dt: 기존 값이 NULL이고 신규 값이 NOT NULL일 때만 갱신(덮어쓰기 방지)
+-- - dlt_dt: 기존 값이 NULL이고 신규 값이 NOT NULL일 때만 갱신(과거 데이터 누락 보강)
 -- - use_yn:
 --     * dlt_dt가 NULL이면 'Y'
---     * 기존 dlt_dt가 NULL이었다가 이번 업로드로 dlt_dt가 채워지면 NULL로 전환
---     * 그 외는 기존값 유지
+--     * 최종 dlt_dt가 존재하면 NULL
 --
 \set ON_ERROR_STOP on
 
@@ -119,10 +118,12 @@ ON CONFLICT (legal_dong_cd) DO UPDATE SET
 	li_nm = EXCLUDED.li_nm,
 	rank = EXCLUDED.rank,
 	cr_dt = EXCLUDED.cr_dt,
+	-- 말소일자(dlt_dt)는 "최초 확정값 유지"가 원칙이며, 누락(NULL)만 보강한다.
 	dlt_dt = CASE
 		WHEN tb_legal_dong_l.dlt_dt IS NULL AND EXCLUDED.dlt_dt IS NOT NULL THEN EXCLUDED.dlt_dt
 		ELSE tb_legal_dong_l.dlt_dt
 	END,
+	-- use_yn은 누락 보강 시점에만 정리한다.
 	use_yn = CASE
 		WHEN tb_legal_dong_l.dlt_dt IS NULL AND EXCLUDED.dlt_dt IS NOT NULL THEN NULL
 		WHEN tb_legal_dong_l.dlt_dt IS NULL AND EXCLUDED.dlt_dt IS NULL THEN 'Y'
@@ -132,4 +133,3 @@ ON CONFLICT (legal_dong_cd) DO UPDATE SET
 	last_upusr_id = :'operator_id';
 
 COMMIT;
-
