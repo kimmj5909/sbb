@@ -1,5 +1,20 @@
 <html layout:decorate="~{layout}">
 <div layout:fragment="content" class="container-fluid my-4 px-4">
+	<!--
+		[작업중 오버레이]
+		- 마이그레이션(미리보기/DB 적용)은 파일 파싱/DB 업서트로 시간이 오래 걸릴 수 있다.
+		- 버튼 클릭 직후 사용자에게 "작업중" 상태를 명확히 보여주기 위해, submit 시 전체 화면 오버레이를 노출한다.
+		- 서버 응답이 도착하면 화면이 리다이렉트/렌더링되므로 오버레이는 자연스럽게 사라진다.
+	-->
+	<div id="jobOverlay" class="d-none"
+		style="position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,.45);">
+		<div class="d-flex flex-column justify-content-center align-items-center h-100 text-white">
+			<div class="spinner-border text-light" role="status" aria-label="loading"></div>
+			<div class="mt-3 fs-5 fw-semibold">&lt;작업중&gt;</div>
+			<div class="mt-1 small opacity-75">처리 중입니다. 잠시만 기다려주세요.</div>
+		</div>
+	</div>
+
 	<h2 class="mb-4">법정동 코드 마이그레이션</h2>
 
 	<div th:if="${adminMessage}" class="alert alert-info" th:text="${adminMessage}"></div>
@@ -16,7 +31,7 @@
 
 	<div class="card mb-4">
 		<div class="card-body">
-			<form method="post" enctype="multipart/form-data" th:action="@{/admin/legal-dong/migration/preview}">
+			<form method="post" enctype="multipart/form-data" th:action="@{/admin/legal-dong/migration/preview}" data-show-job-overlay="true">
 				<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
 				<div class="d-flex flex-wrap gap-2 align-items-center">
 					<input class="form-control" style="max-width: 520px;" type="file" name="file" accept=".xlsx" required>
@@ -163,5 +178,44 @@
 			</ul>
 		</div>
 	</div>
+
+	<script>
+		// submit 시 "작업중" 오버레이를 노출하고, 중복 submit을 방지한다.
+		(function () {
+			function showOverlay() {
+				const overlay = document.getElementById('jobOverlay');
+				if (!overlay) return;
+				overlay.classList.remove('d-none');
+			}
+
+			function disableSubmitControls(form) {
+				const controls = form.querySelectorAll('button, input, select, textarea');
+				controls.forEach(el => {
+					if (el.tagName === 'BUTTON' && el.type === 'submit') {
+						el.disabled = true;
+					}
+					if (el.tagName === 'INPUT' && el.type === 'file') {
+						el.disabled = true;
+					}
+				});
+			}
+
+			document.addEventListener('submit', function (e) {
+				const form = e.target;
+				if (!form || form.getAttribute('data-show-job-overlay') !== 'true') return;
+
+				// 파일 업로드가 포함되므로, submit 직후 바로 표시(브라우저 업로드 단계에서도 사용자 피드백 제공).
+				showOverlay();
+				disableSubmitControls(form);
+			}, true);
+
+			// DB 적용 버튼은 가장 오래 걸릴 수 있어 오버레이를 강제 적용한다.
+			// (기존 템플릿에서 class로 폼을 찾기보다, action 경로로 명확히 매칭한다.)
+			document.addEventListener('DOMContentLoaded', function () {
+				const forms = document.querySelectorAll('form[action$="/admin/legal-dong/migration/apply"]');
+				forms.forEach(f => f.setAttribute('data-show-job-overlay', 'true'));
+			});
+		})();
+	</script>
 </div>
 </html>
