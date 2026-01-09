@@ -68,3 +68,23 @@
 - 미리보기 화면에 DB 스냅샷 대비 일자(cr/dlt) 갱신 필요 여부를 셀 단위로 표시(`갱신` 배지 + DB값 비교).
 - 미리보기 CSV 다운로드에서 한글 깨짐/파일명 깨짐 완화를 위해 UTF-8 BOM 및 `filename*` 헤더를 추가.
 - DB 적용 결과에 시행일별 과거코드 매핑 애매/누락/말소 리 누락 카운트를 출력해 원인 추적을 보강.
+- 과거코드 자동매핑은 base_city(시/군 루트명) + emndn_root + li tail2 overlap 점수 기반으로 유니크(top_ties=1)만 반영하도록 고도화.
+- 마이그레이션 DB 적용 단위(runId) 스냅샷 저장 및 UI 롤백(`/admin/legal-dong/migration/rollback`) 추가.
+- 검색/조회(`/admin/legal-dong/search`) 편집 UX를 목록 내 `편집` 버튼 + 오버레이(모달)로 변경.
+
+## CSV/psql 작업 경로(운영/테스트)
+- **psql 로컬 CSV → TEMP → CALL(권장)**: `scripts/legal_dong_migrate_from_psql_local_csv.sql`
+  - `\copy ... WITH (HEADER true)`는 헤더 이름과 무관하며, **컬럼 순서로 매핑**되므로 한글 헤더 CSV도 그대로 사용 가능.
+- **서버 경로 CSV(운영 서버 디스크) → server-side COPY → TEMP → CALL**: `scripts/legal_dong_migrate_from_server_csv_proc.sql`
+  - 권한/정책 필요: server-side `COPY FROM` 파일 읽기 권한(`pg_read_server_files` 등)
+- **테이블 생성 로그가 불가한 환경**: `scripts/legal_dong_migrate_from_values_dbeaver.sql`
+  - CSV를 `VALUES (...)`로 변환해 붙여넣는 방식(DDL 없이 INSERT/UPDATE만).
+
+## 최신 커밋(최근 20)
+- `d4f44fa` server csv migration procedure 추가
+- `21704c1` psql 로컬 CSV 드라이버 스크립트 추가
+- `b27be3d` TEMP 기반 migrate 프로시저 추가
+- `ab7958d` DBeaver TEMP 템플릿 추가
+- `1170b28` VALUES 기반 DBeaver 스크립트 추가
+- `8a5a58d` 검색 목록 편집 모달 UX
+- `c9fa38f` 마이그레이션 runId 롤백
