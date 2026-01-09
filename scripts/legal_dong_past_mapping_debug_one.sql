@@ -148,8 +148,8 @@ tied AS (
 	FROM ranked r
 )
 SELECT
-	max_score,
-	top_ties,
-	CASE WHEN max_score > 0 AND top_ties = 1 THEN 'Y' ELSE 'N' END AS can_auto_map,
+	COALESCE(max(max_score), 0) AS max_score,
+	COALESCE(max(top_ties), 0) AS top_ties,
+	CASE WHEN COALESCE(max(max_score), 0) > 0 AND COALESCE(max(top_ties), 0) = 1 THEN 'Y' ELSE 'N' END AS can_auto_map,
 	(array_agg(old_emndn_cd10 ORDER BY score DESC, old_emndn_cd10))[1] AS chosen_old_emndn_cd10
 FROM tied;
