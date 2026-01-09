@@ -82,8 +82,10 @@ public class LegalDongPastMappingJdbcRepository {
 						o.ctprv_cd,
 						btrim(coalesce(o.sgng_nm, '')) AS old_sgng_nm,
 						btrim(coalesce(o.emndn_nm, '')) AS old_emndn_nm,
-						-- base_city: 공백 유무와 무관하게 "...시/군" 기준으로 정규화한다(예: '화성시만세구' -> '화성시').
-						regexp_replace(btrim(coalesce(o.sgng_nm, '')), '^\\\\s*([^\\\\s]+?(시|군)).*$', '\\\\1') AS old_base_city,
+						-- base_city_root: 시군구명 포맷(공백/접두어)과 군↔시 전환을 모두 커버하기 위해,
+						-- "...시/군"에서 시/군 접미사를 제거한 루트명으로 정규화한다.
+						-- 예: '화성시', '화성시 만세구', '경기도 화성시 만세구', '화성군' => 모두 '화성'
+						regexp_replace(btrim(coalesce(o.sgng_nm, '')), '.*?([가-힣]+)(시|군).*$', '\\\\1') AS old_base_city,
 						regexp_replace(btrim(coalesce(o.emndn_nm, '')), '(읍|면|동|리|가)$', '') AS old_emndn_root
 					FROM tb_legal_dong_l o
 					WHERE o.li_cd IS NULL
@@ -97,7 +99,7 @@ public class LegalDongPastMappingJdbcRepository {
 						n.ctprv_cd,
 						btrim(coalesce(n.sgng_nm, '')) AS new_sgng_nm,
 						btrim(coalesce(n.emndn_nm, '')) AS new_emndn_nm,
-						regexp_replace(btrim(coalesce(n.sgng_nm, '')), '^\\\\s*([^\\\\s]+?(시|군)).*$', '\\\\1') AS new_base_city,
+						regexp_replace(btrim(coalesce(n.sgng_nm, '')), '.*?([가-힣]+)(시|군).*$', '\\\\1') AS new_base_city,
 						regexp_replace(btrim(coalesce(n.emndn_nm, '')), '(읍|면|동|리|가)$', '') AS new_emndn_root
 					FROM tb_legal_dong_l n
 					WHERE n.li_cd IS NULL
@@ -245,7 +247,7 @@ public class LegalDongPastMappingJdbcRepository {
 						o.emndn_cd AS old_emndn_cd8,
 						o.ctprv_cd,
 						btrim(coalesce(o.emndn_nm, '')) AS old_emndn_nm,
-						regexp_replace(btrim(coalesce(o.sgng_nm, '')), '^\\\\s*([^\\\\s]+?(시|군)).*$', '\\\\1') AS old_base_city,
+						regexp_replace(btrim(coalesce(o.sgng_nm, '')), '.*?([가-힣]+)(시|군).*$', '\\\\1') AS old_base_city,
 						regexp_replace(btrim(coalesce(o.emndn_nm, '')), '(읍|면|동|리|가)$', '') AS old_emndn_root
 					FROM tb_legal_dong_l o
 					WHERE o.li_cd IS NULL
@@ -258,7 +260,7 @@ public class LegalDongPastMappingJdbcRepository {
 						n.emndn_cd AS new_emndn_cd8,
 						n.ctprv_cd,
 						btrim(coalesce(n.emndn_nm, '')) AS new_emndn_nm,
-						regexp_replace(btrim(coalesce(n.sgng_nm, '')), '^\\\\s*([^\\\\s]+?(시|군)).*$', '\\\\1') AS new_base_city,
+						regexp_replace(btrim(coalesce(n.sgng_nm, '')), '.*?([가-힣]+)(시|군).*$', '\\\\1') AS new_base_city,
 						regexp_replace(btrim(coalesce(n.emndn_nm, '')), '(읍|면|동|리|가)$', '') AS new_emndn_root
 					FROM tb_legal_dong_l n
 					WHERE n.li_cd IS NULL
@@ -353,7 +355,7 @@ public class LegalDongPastMappingJdbcRepository {
 						o.emndn_cd AS old_emndn_cd8,
 						o.ctprv_cd,
 						btrim(coalesce(o.emndn_nm, '')) AS old_emndn_nm,
-						regexp_replace(btrim(coalesce(o.sgng_nm, '')), '^\\\\s*([^\\\\s]+?(시|군)).*$', '\\\\1') AS old_base_city,
+						regexp_replace(btrim(coalesce(o.sgng_nm, '')), '.*?([가-힣]+)(시|군).*$', '\\\\1') AS old_base_city,
 						regexp_replace(btrim(coalesce(o.emndn_nm, '')), '(읍|면|동|리|가)$', '') AS old_emndn_root
 					FROM tb_legal_dong_l o
 					WHERE o.li_cd IS NULL
@@ -365,7 +367,7 @@ public class LegalDongPastMappingJdbcRepository {
 						n.emndn_cd AS new_emndn_cd8,
 						n.ctprv_cd,
 						btrim(coalesce(n.emndn_nm, '')) AS new_emndn_nm,
-						regexp_replace(btrim(coalesce(n.sgng_nm, '')), '^\\\\s*([^\\\\s]+?(시|군)).*$', '\\\\1') AS new_base_city,
+						regexp_replace(btrim(coalesce(n.sgng_nm, '')), '.*?([가-힣]+)(시|군).*$', '\\\\1') AS new_base_city,
 						regexp_replace(btrim(coalesce(n.emndn_nm, '')), '(읍|면|동|리|가)$', '') AS new_emndn_root
 					FROM tb_legal_dong_l n
 					WHERE n.li_cd IS NULL
