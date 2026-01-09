@@ -115,7 +115,8 @@ public class LegalDongMigrationController {
 	 * 주의
 	 * - 미리보기는 페이지 단위로 표시되지만, CSV 다운로드는 전체 파생 결과를 내려준다.
 	 * - 브라우저/엑셀에서 숫자로 해석하면 앞 0이 유실될 수 있으므로, "DB 적재용"으로 사용하는 것을 권장한다.
-	 * - 파싱/검증 경고(errors)가 존재하면, CSV 적재 시 오염 가능성이 있어 400으로 차단한다.
+	 * - 파싱/검증 경고(errors)가 존재해도, 운영에서 델타 업서트/검증을 위해 CSV 다운로드가 필요한 경우가 있어 차단하지 않는다.
+	 *   대신 CSV 헤더 아래에 `#WARN:` 라인으로 경고 메시지를 포함해, 사용자가 적재 전 확인할 수 있도록 한다.
 	 */
 	@GetMapping("/migration/preview/csv")
 	public ResponseEntity<byte[]> downloadPreviewCsv(HttpSession session) {
@@ -127,18 +128,19 @@ public class LegalDongMigrationController {
 		}
 
 		LegalDongMigrationPreviewResult preview = migrationService.preview(bytes, 0, Integer.MAX_VALUE);
-		if (preview.getErrors() != null && preview.getErrors().isEmpty() == false) {
-			String message = "파싱/검증 경고가 존재해 CSV 다운로드를 중단합니다.\n- "
-					+ String.join("\n- ", preview.getErrors());
-			return ResponseEntity.badRequest()
-					.contentType(MediaType.TEXT_PLAIN)
-					.body(message.getBytes(StandardCharsets.UTF_8));
-		}
-
 		String originalFileName = (String) session.getAttribute(SESSION_KEY_PREVIEW_FILENAME);
 		String csvFileName = toCsvFileName(originalFileName != null ? originalFileName : "legal_dong_migration.xlsx");
 
 		StringBuilder csv = new StringBuilder(1024);
+		// 경고가 있으면 CSV 상단에 주석 라인으로 포함한다(엑셀/psql 적재에는 영향 없음).
+		if (preview.getErrors() != null && preview.getErrors().isEmpty() == false) {
+			for (String e : preview.getErrors()) {
+				if (e == null || e.isBlank()) {
+					continue;
+				}
+				csv.append("#WARN: ").append(e.replace("\r", " ").replace("\n", " ")).append("\r\n");
+			}
+		}
 		csv.append("legal_dong_cd,legal_dong_nm,ctprv_cd,ctprv_nm,sgng_cd,sgng_nm,emndn_cd,emndn_nm,li_cd,li_nm,rank,cr_dt,dlt_dt\r\n");
 		for (LegalDongDerivedRow row : preview.getEntries()) {
 			appendCsvRow(csv, row);
