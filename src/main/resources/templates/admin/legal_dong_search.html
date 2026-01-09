@@ -77,7 +77,6 @@
 		<table class="table table-sm table-striped align-middle">
 			<thead class="table-light">
 			<tr>
-				<th>수정</th>
 				<th>법정동코드</th>
 				<th>법정동명</th>
 				<th>시도명</th>
@@ -89,53 +88,11 @@
 				<th>삭제일자</th>
 				<th>과거법정동코드</th>
 				<th>사용여부</th>
+				<th>편집</th>
 			</tr>
 			</thead>
 			<tbody>
 			<tr th:each="e : ${result.entries}">
-				<td style="min-width: 230px;">
-					<form method="post"
-						  th:action="@{/admin/legal-dong/update}"
-						  class="d-flex flex-wrap gap-2 align-items-center legal-dong-edit-form">
-						<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-						<input type="hidden" name="legalDongCd" th:value="${e.legalDongCd}">
-						<input type="hidden" name="field" th:value="${param.field != null ? param.field[0] : 'all'}">
-						<input type="hidden" name="keyword" th:value="${param.keyword != null ? param.keyword[0] : ''}">
-						<input type="hidden" name="dateField" th:value="${param.dateField != null ? param.dateField[0] : 'none'}">
-						<input type="hidden" name="dateFrom" th:value="${param.dateFrom != null ? param.dateFrom[0] : ''}">
-						<input type="hidden" name="dateTo" th:value="${param.dateTo != null ? param.dateTo[0] : ''}">
-						<input type="hidden" name="useYn" th:value="${param.useYn != null ? param.useYn[0] : 'all'}">
-						<input type="hidden" name="size" th:value="${param.size != null ? param.size[0] : '40'}">
-						<input type="hidden" name="page" th:value="${result.page}">
-
-							<input class="form-control form-control-sm"
-								   name="pastLegalDongCd"
-								   placeholder="과거코드(10자리)"
-								   inputmode="numeric"
-								   pattern="[0-9]{10}"
-								   maxlength="10"
-								   title="숫자 10자리만 입력하세요."
-								   style="width: 130px;"
-								   th:value="${e.pastLegalDongCd}"
-								   disabled>
-							<input class="form-control form-control-sm"
-								   name="dltDt"
-								   placeholder="말소일자(yyyyMMdd)"
-								   inputmode="numeric"
-								   pattern="[0-9]{8}"
-								   maxlength="8"
-								   title="yyyyMMdd 형식(숫자 8자리)로 입력하세요."
-								   style="width: 140px;"
-								   th:value="${e.dltDt != null ? #strings.replace(e.dltDt, '-', '') : ''}"
-								   disabled>
-
-						<div class="d-flex gap-2">
-							<button type="button" class="btn btn-sm btn-outline-secondary legal-dong-edit-toggle" data-state="view">수정</button>
-							<button type="submit" class="btn btn-sm btn-outline-primary legal-dong-save" disabled>저장</button>
-							<button type="button" class="btn btn-sm btn-outline-secondary legal-dong-cancel d-none">취소</button>
-						</div>
-					</form>
-				</td>
 				<td th:text="${e.legalDongCd}"></td>
 				<td th:text="${e.legalDongNm}"></td>
 				<td th:text="${e.ctprvNm}"></td>
@@ -147,12 +104,92 @@
 				<td th:text="${e.dltDt}"></td>
 				<td th:text="${e.pastLegalDongCd}"></td>
 				<td th:text="${e.useYn == 'Y' ? '사용' : '미사용'}"></td>
-			</tr>
-			<tr th:if="${#lists.isEmpty(result.entries)}">
-				<td colspan="12" class="text-center text-muted">검색 결과가 없습니다.</td>
-			</tr>
-			</tbody>
-		</table>
+				<td style="min-width: 88px;">
+					<button type="button"
+							class="btn btn-sm btn-outline-secondary legal-dong-open-edit"
+							th:attr="data-legal-dong-cd=${e.legalDongCd},
+									 data-legal-dong-nm=${e.legalDongNm},
+									 data-past-legal-dong-cd=${e.pastLegalDongCd},
+									 data-dlt-dt=${e.dltDt != null ? #strings.replace(e.dltDt, '-', '') : ''}">
+						수정
+					</button>
+				</td>
+				</tr>
+				<tr th:if="${#lists.isEmpty(result.entries)}">
+					<td colspan="11" class="text-center text-muted">검색 결과가 없습니다.</td>
+				</tr>
+				</tbody>
+			</table>
+		</div>
+
+	<!--
+		[오버레이 편집 창]
+		- 기존 인라인 수정은 테이블 폭을 크게 차지해 목록 가시성이 떨어지는 문제가 있다.
+		- "사용여부" 옆 "편집" 버튼을 클릭하면, 오버레이(모달)로 수정 창을 띄워 입력/저장한다.
+		- 저장은 기존 관리자 수정 엔드포인트(`/admin/legal-dong/update`)를 그대로 사용한다.
+	-->
+	<div id="legalDongEditOverlay" class="d-none"
+		style="position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,.45);">
+		<div class="d-flex justify-content-center align-items-center h-100 px-3">
+			<div class="card shadow" style="max-width: 640px; width: 100%;">
+				<div class="card-header d-flex justify-content-between align-items-center">
+					<div class="fw-semibold">법정동 수정</div>
+					<button type="button" class="btn btn-sm btn-outline-secondary" id="legalDongEditClose">닫기</button>
+				</div>
+				<div class="card-body">
+					<div class="small text-muted mb-2">
+						<div>법정동코드: <span id="legalDongEditCd"></span></div>
+						<div>법정동명: <span id="legalDongEditNm"></span></div>
+					</div>
+					<form method="post" th:action="@{/admin/legal-dong/update}" id="legalDongEditForm">
+						<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+						<input type="hidden" name="legalDongCd" id="legalDongEditLegalDongCd">
+
+						<!-- 검색 조건 유지용 파라미터 -->
+						<input type="hidden" name="field" th:value="${param.field != null ? param.field[0] : 'all'}">
+						<input type="hidden" name="keyword" th:value="${param.keyword != null ? param.keyword[0] : ''}">
+						<input type="hidden" name="dateField" th:value="${param.dateField != null ? param.dateField[0] : 'none'}">
+						<input type="hidden" name="dateFrom" th:value="${param.dateFrom != null ? param.dateFrom[0] : ''}">
+						<input type="hidden" name="dateTo" th:value="${param.dateTo != null ? param.dateTo[0] : ''}">
+						<input type="hidden" name="useYn" th:value="${param.useYn != null ? param.useYn[0] : 'all'}">
+						<input type="hidden" name="size" th:value="${param.size != null ? param.size[0] : '40'}">
+						<input type="hidden" name="page" th:value="${result.page}">
+
+						<div class="row g-2">
+							<div class="col-md-6">
+								<label class="form-label small text-muted">과거법정동코드(10자리)</label>
+								<input class="form-control"
+									   name="pastLegalDongCd"
+									   id="legalDongEditPastCd"
+									   placeholder="예: 4159025600"
+									   inputmode="numeric"
+									   pattern="[0-9]{10}"
+									   maxlength="10"
+									   title="숫자 10자리만 입력하세요. (삭제하려면 비워두세요)">
+								<div class="form-text">비우면 과거코드를 삭제합니다.</div>
+							</div>
+							<div class="col-md-6">
+								<label class="form-label small text-muted">말소일자(yyyyMMdd)</label>
+								<input class="form-control"
+									   name="dltDt"
+									   id="legalDongEditDltDt"
+									   placeholder="예: 20260201"
+									   inputmode="numeric"
+									   pattern="[0-9]{8}"
+									   maxlength="8"
+									   title="yyyyMMdd(숫자 8자리)로 입력하세요. (삭제하려면 비워두세요)">
+								<div class="form-text">비우면 활성(사용)으로 간주합니다.</div>
+							</div>
+						</div>
+
+						<div class="mt-3 d-flex gap-2 justify-content-end">
+							<button type="button" class="btn btn-outline-secondary" id="legalDongEditCancel">취소</button>
+							<button type="submit" class="btn btn-primary">저장</button>
+						</div>
+					</form>
+				</div>
+			</div>
+		</div>
 	</div>
 
 	<nav th:if="${#lists.isEmpty(pageNumbers) == false}">
@@ -179,50 +216,77 @@
 
 <script layout:fragment="script" type="text/javascript">
 	document.addEventListener('DOMContentLoaded', function () {
-		const forms = document.querySelectorAll('.legal-dong-edit-form');
-		forms.forEach(function (form) {
-			const editButton = form.querySelector('.legal-dong-edit-toggle');
-			const saveButton = form.querySelector('.legal-dong-save');
-			const cancelButton = form.querySelector('.legal-dong-cancel');
-			const pastInput = form.querySelector('input[name="pastLegalDongCd"]');
-			const dltInput = form.querySelector('input[name="dltDt"]');
-			const initial = {
-				past: pastInput.value,
-				dlt: dltInput.value
-			};
+		const overlay = document.getElementById('legalDongEditOverlay');
+		const closeButton = document.getElementById('legalDongEditClose');
+		const cancelButton = document.getElementById('legalDongEditCancel');
 
-			const setEditMode = function (enabled) {
-				pastInput.disabled = !enabled;
-				dltInput.disabled = !enabled;
-				saveButton.disabled = !enabled;
-				cancelButton.classList.toggle('d-none', !enabled);
-				editButton.textContent = enabled ? '보기' : '수정';
-				editButton.dataset.state = enabled ? 'edit' : 'view';
-			};
+		const cdLabel = document.getElementById('legalDongEditCd');
+		const nmLabel = document.getElementById('legalDongEditNm');
 
-			editButton.addEventListener('click', function () {
-				const isEdit = editButton.dataset.state === 'edit';
-				setEditMode(!isEdit);
+		const cdInput = document.getElementById('legalDongEditLegalDongCd');
+		const pastInput = document.getElementById('legalDongEditPastCd');
+		const dltInput = document.getElementById('legalDongEditDltDt');
+
+		// 입력값 원복(취소)용 스냅샷
+		let initial = { past: '', dlt: '' };
+
+		const showOverlay = function () {
+			if (!overlay) return;
+			overlay.classList.remove('d-none');
+		};
+
+		const hideOverlay = function () {
+			if (!overlay) return;
+			overlay.classList.add('d-none');
+		};
+
+		// 숫자만 입력 + 최대 길이 제한을 강제한다.
+		// - pattern/maxlength는 브라우저/IME에 따라 즉시 적용되지 않는 경우가 있어 JS로도 방어한다.
+		const sanitizeDigits = function (element, maxLen) {
+			if (!element) return;
+			element.addEventListener('input', function () {
+				const digits = (this.value || '').replace(/[^0-9]/g, '');
+				this.value = digits.length > maxLen ? digits.slice(0, maxLen) : digits;
 			});
+		};
+		sanitizeDigits(pastInput, 10);
+		sanitizeDigits(dltInput, 8);
 
-			cancelButton.addEventListener('click', function () {
-				pastInput.value = initial.past;
-				dltInput.value = initial.dlt;
-				setEditMode(false);
+		// 목록의 "수정" 버튼을 누르면 오버레이로 값을 주입한다.
+		document.querySelectorAll('.legal-dong-open-edit').forEach(function (btn) {
+			btn.addEventListener('click', function () {
+				const legalDongCd = this.dataset.legalDongCd || '';
+				const legalDongNm = this.dataset.legalDongNm || '';
+				const pastLegalDongCd = this.dataset.pastLegalDongCd || '';
+				const dltDt = this.dataset.dltDt || '';
+
+				cdLabel.textContent = legalDongCd;
+				nmLabel.textContent = legalDongNm;
+
+				cdInput.value = legalDongCd;
+				pastInput.value = pastLegalDongCd;
+				dltInput.value = dltDt;
+
+				initial = { past: pastLegalDongCd, dlt: dltDt };
+				showOverlay();
 			});
+		});
 
-			const sanitizeDigits = function (element, maxLen) {
-				if (!element) {
-					return;
-				}
-				element.addEventListener('input', function () {
-					const digits = (this.value || '').replace(/[^0-9]/g, '');
-					this.value = digits.length > maxLen ? digits.slice(0, maxLen) : digits;
-				});
-			};
+		closeButton && closeButton.addEventListener('click', function () {
+			hideOverlay();
+		});
 
-			sanitizeDigits(pastInput, 10);
-			sanitizeDigits(dltInput, 8);
+		cancelButton && cancelButton.addEventListener('click', function () {
+			pastInput.value = initial.past;
+			dltInput.value = initial.dlt;
+			hideOverlay();
+		});
+
+		// 배경 클릭으로 닫기(카드 영역 클릭은 제외)
+		overlay && overlay.addEventListener('click', function (e) {
+			if (e.target === overlay) {
+				hideOverlay();
+			}
 		});
 	});
 </script>
