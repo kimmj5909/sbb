@@ -91,12 +91,14 @@ public class LegalDongMigrationService {
 				// - old.dlt_dt = eff_dt 조건을 만족하는 후보가 없거나(누락),
 				// - 후보가 2개 이상이라 유니크 매핑이 불가한 경우(애매),
 				// - 리 단위는 (old_emndn_cd||tail2) 형태의 말소 코드가 누락된 경우(말소 리 누락)로 분류한다.
-				if (r.getEmndnAmbiguousCnt() > 0 || r.getEmndnMissingCnt() > 0 || r.getLiMissingOldCnt() > 0) {
-					pastMappingDiagnostics.add("[시행일 " + r.getEffDt() + "] 신규 읍면동 " + r.getNewEmndnCnt()
+				if (r.getEmndnAmbiguousCnt() > 0 || r.getEmndnMissingCnt() > 0 || r.getLiMissingOldCnt() > 0 || r.getOldEmndnCnt() == 0) {
+					pastMappingDiagnostics.add("[시행일 " + r.getEffDt() + "] 말소 읍면동 " + r.getOldEmndnCnt()
+							+ "건, 신규 읍면동 " + r.getNewEmndnCnt()
 							+ "건 중 반영 " + r.getEmndnUpdatedCnt()
 							+ "건 (애매 " + r.getEmndnAmbiguousCnt()
 							+ ", 누락 " + r.getEmndnMissingCnt()
-							+ "), 신규 리 " + r.getNewLiCnt()
+							+ "), 말소 리 " + r.getOldLiCnt()
+							+ "건, 신규 리 " + r.getNewLiCnt()
 							+ "건 중 반영 " + r.getLiUpdatedCnt()
 							+ "건 (말소 리 누락 " + r.getLiMissingOldCnt() + ")");
 				}

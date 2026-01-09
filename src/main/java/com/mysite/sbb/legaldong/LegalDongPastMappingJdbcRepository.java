@@ -43,10 +43,12 @@ public class LegalDongPastMappingJdbcRepository {
 
 		return new LegalDongPastMappingApplyResult(
 				effDt,
+				stats.oldEmndnCnt,
 				stats.newEmndnCnt,
 				emndnUpdated,
 				stats.emndnAmbiguousCnt,
 				stats.emndnMissingCnt,
+				stats.oldLiCnt,
 				stats.newLiCnt,
 				liUpdated,
 				stats.liMissingOldCnt);
@@ -80,7 +82,8 @@ public class LegalDongPastMappingJdbcRepository {
 						o.ctprv_cd,
 						btrim(coalesce(o.sgng_nm, '')) AS old_sgng_nm,
 						btrim(coalesce(o.emndn_nm, '')) AS old_emndn_nm,
-						regexp_replace(btrim(coalesce(o.sgng_nm, '')), '\\\\s.*$', '') AS old_base_city,
+						-- base_city: 공백 유무와 무관하게 "...시/군" 기준으로 정규화한다(예: '화성시만세구' -> '화성시').
+						regexp_replace(btrim(coalesce(o.sgng_nm, '')), '^\\\\s*([^\\\\s]+?(시|군)).*$', '\\\\1') AS old_base_city,
 						regexp_replace(btrim(coalesce(o.emndn_nm, '')), '(읍|면|동|리|가)$', '') AS old_emndn_root
 					FROM tb_legal_dong_l o
 					WHERE o.li_cd IS NULL
@@ -94,7 +97,7 @@ public class LegalDongPastMappingJdbcRepository {
 						n.ctprv_cd,
 						btrim(coalesce(n.sgng_nm, '')) AS new_sgng_nm,
 						btrim(coalesce(n.emndn_nm, '')) AS new_emndn_nm,
-						regexp_replace(btrim(coalesce(n.sgng_nm, '')), '\\\\s.*$', '') AS new_base_city,
+						regexp_replace(btrim(coalesce(n.sgng_nm, '')), '^\\\\s*([^\\\\s]+?(시|군)).*$', '\\\\1') AS new_base_city,
 						regexp_replace(btrim(coalesce(n.emndn_nm, '')), '(읍|면|동|리|가)$', '') AS new_emndn_root
 					FROM tb_legal_dong_l n
 					WHERE n.li_cd IS NULL
@@ -196,17 +199,21 @@ public class LegalDongPastMappingJdbcRepository {
 					WHERE o.old_li_cd IS NULL
 				)
 				SELECT
+					(SELECT count(*) FROM old_emndn) AS old_emndn_cnt,
 					(SELECT count(*) FROM new_emndn) AS new_emndn_cnt,
 					(SELECT count(*) FROM emndn_agg WHERE candidate_cnt = 0) AS emndn_missing_cnt,
 					(SELECT count(*) FROM emndn_agg WHERE candidate_cnt > 1) AS emndn_ambiguous_cnt,
+					(SELECT count(*) FROM old_li) AS old_li_cnt,
 					(SELECT count(*) FROM new_li) AS new_li_cnt,
 					(SELECT missing_cnt FROM li_missing_old) AS li_missing_old_cnt
 				""";
 
 		return jdbcTemplate.queryForObject(sql, params, (rs, rowNum) -> new Stats(
+				rs.getInt("old_emndn_cnt"),
 				rs.getInt("new_emndn_cnt"),
 				rs.getInt("emndn_ambiguous_cnt"),
 				rs.getInt("emndn_missing_cnt"),
+				rs.getInt("old_li_cnt"),
 				rs.getInt("new_li_cnt"),
 				rs.getInt("li_missing_old_cnt")));
 	}
@@ -238,7 +245,7 @@ public class LegalDongPastMappingJdbcRepository {
 						o.emndn_cd AS old_emndn_cd8,
 						o.ctprv_cd,
 						btrim(coalesce(o.emndn_nm, '')) AS old_emndn_nm,
-						regexp_replace(btrim(coalesce(o.sgng_nm, '')), '\\\\s.*$', '') AS old_base_city,
+						regexp_replace(btrim(coalesce(o.sgng_nm, '')), '^\\\\s*([^\\\\s]+?(시|군)).*$', '\\\\1') AS old_base_city,
 						regexp_replace(btrim(coalesce(o.emndn_nm, '')), '(읍|면|동|리|가)$', '') AS old_emndn_root
 					FROM tb_legal_dong_l o
 					WHERE o.li_cd IS NULL
@@ -251,7 +258,7 @@ public class LegalDongPastMappingJdbcRepository {
 						n.emndn_cd AS new_emndn_cd8,
 						n.ctprv_cd,
 						btrim(coalesce(n.emndn_nm, '')) AS new_emndn_nm,
-						regexp_replace(btrim(coalesce(n.sgng_nm, '')), '\\\\s.*$', '') AS new_base_city,
+						regexp_replace(btrim(coalesce(n.sgng_nm, '')), '^\\\\s*([^\\\\s]+?(시|군)).*$', '\\\\1') AS new_base_city,
 						regexp_replace(btrim(coalesce(n.emndn_nm, '')), '(읍|면|동|리|가)$', '') AS new_emndn_root
 					FROM tb_legal_dong_l n
 					WHERE n.li_cd IS NULL
@@ -346,7 +353,7 @@ public class LegalDongPastMappingJdbcRepository {
 						o.emndn_cd AS old_emndn_cd8,
 						o.ctprv_cd,
 						btrim(coalesce(o.emndn_nm, '')) AS old_emndn_nm,
-						regexp_replace(btrim(coalesce(o.sgng_nm, '')), '\\\\s.*$', '') AS old_base_city,
+						regexp_replace(btrim(coalesce(o.sgng_nm, '')), '^\\\\s*([^\\\\s]+?(시|군)).*$', '\\\\1') AS old_base_city,
 						regexp_replace(btrim(coalesce(o.emndn_nm, '')), '(읍|면|동|리|가)$', '') AS old_emndn_root
 					FROM tb_legal_dong_l o
 					WHERE o.li_cd IS NULL
@@ -358,7 +365,7 @@ public class LegalDongPastMappingJdbcRepository {
 						n.emndn_cd AS new_emndn_cd8,
 						n.ctprv_cd,
 						btrim(coalesce(n.emndn_nm, '')) AS new_emndn_nm,
-						regexp_replace(btrim(coalesce(n.sgng_nm, '')), '\\\\s.*$', '') AS new_base_city,
+						regexp_replace(btrim(coalesce(n.sgng_nm, '')), '^\\\\s*([^\\\\s]+?(시|군)).*$', '\\\\1') AS new_base_city,
 						regexp_replace(btrim(coalesce(n.emndn_nm, '')), '(읍|면|동|리|가)$', '') AS new_emndn_root
 					FROM tb_legal_dong_l n
 					WHERE n.li_cd IS NULL
@@ -455,6 +462,13 @@ public class LegalDongPastMappingJdbcRepository {
 		return jdbcTemplate.update(sql, params);
 	}
 
-	private record Stats(int newEmndnCnt, int emndnAmbiguousCnt, int emndnMissingCnt, int newLiCnt, int liMissingOldCnt) {
+	private record Stats(
+			int oldEmndnCnt,
+			int newEmndnCnt,
+			int emndnAmbiguousCnt,
+			int emndnMissingCnt,
+			int oldLiCnt,
+			int newLiCnt,
+			int liMissingOldCnt) {
 	}
 }

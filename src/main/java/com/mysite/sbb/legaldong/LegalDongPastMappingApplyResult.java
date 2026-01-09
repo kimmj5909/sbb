@@ -13,13 +13,14 @@ import lombok.Value;
 public class LegalDongPastMappingApplyResult {
 	String effDt;
 
+	int oldEmndnCnt;
 	int newEmndnCnt;
 	int emndnUpdatedCnt;
 	int emndnAmbiguousCnt;
 	int emndnMissingCnt;
 
+	int oldLiCnt;
 	int newLiCnt;
 	int liUpdatedCnt;
 	int liMissingOldCnt;
 }
-
