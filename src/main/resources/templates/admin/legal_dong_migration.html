@@ -25,7 +25,7 @@
 			<li>엑셀 첫 시트에 헤더(예: 행정동코드/시도명/시군구명/읍면동명/법정동코드/동리명/생성일자/말소일자)가 있어야 합니다.</li>
 			<li>법정동코드는 10자리 문자열로 처리하며, 단위 꼬리값이 000 또는 00이면 해당 하위 단위는 "없음(null)"으로 저장합니다.</li>
 			<li>rank는 상위(리 없음)과 하위(리 있음)를 각각 1,2,3...으로 별도 카운트해 단일 컬럼에 저장합니다.</li>
-			<li>말소 여부는 말소일자(dlt_dt)로만 판단하며 use_yn은 항상 null로 유지합니다.</li>
+			<li>말소 여부는 말소일자(dlt_dt)로만 판단하며, use_yn은 최종 dlt_dt 유무로만 결정합니다(활성=Y / 말소=NULL).</li>
 		</ul>
 	</div>
 
@@ -86,7 +86,7 @@
 				미리보기 결과 CSV 다운로드
 			</a>
 			<div class="form-text">
-				다운로드 CSV는 DB 적재용(코드 앞 0 유지)입니다. 파싱/검증 경고가 있으면 다운로드가 차단됩니다.
+				다운로드 CSV는 DB 적재용(코드 앞 0 유지)입니다. 파싱/검증 경고가 있으면 CSV 상단에 `#WARN:` 라인으로 포함됩니다.
 			</div>
 		</div>
 
@@ -126,8 +126,22 @@
 					<td th:text="${r.legalDongCd}"></td>
 					<td th:text="${r.legalDongNm}"></td>
 					<td th:text="${r.rank}"></td>
-					<td th:text="${r.crDt}"></td>
-					<td th:text="${r.dltDt}"></td>
+					<td>
+						<div th:text="${r.crDt}"></div>
+						<div th:if="${dateStatusByCode != null and dateStatusByCode[r.legalDongCd] != null and dateStatusByCode[r.legalDongCd].isNew}"
+							class="small text-muted">DB: (신규)</div>
+						<div th:if="${dateStatusByCode != null and dateStatusByCode[r.legalDongCd] != null and !dateStatusByCode[r.legalDongCd].isNew and dateStatusByCode[r.legalDongCd].crWillChange}"
+							class="small text-danger">DB: <span th:text="${dateStatusByCode[r.legalDongCd].beforeCrDt}"></span> → <span th:text="${dateStatusByCode[r.legalDongCd].incomingCrDt}"></span></div>
+						<span th:if="${dateStatusByCode != null and dateStatusByCode[r.legalDongCd] != null and dateStatusByCode[r.legalDongCd].crWillChange}"
+							class="badge text-bg-warning mt-1">갱신</span>
+					</td>
+					<td>
+						<div th:text="${r.dltDt}"></div>
+						<div th:if="${dateStatusByCode != null and dateStatusByCode[r.legalDongCd] != null and !dateStatusByCode[r.legalDongCd].isNew and dateStatusByCode[r.legalDongCd].dltWillChange}"
+							class="small text-danger">DB: <span th:text="${dateStatusByCode[r.legalDongCd].beforeDltDt}"></span> → <span th:text="${dateStatusByCode[r.legalDongCd].incomingDltDt}"></span></div>
+						<span th:if="${dateStatusByCode != null and dateStatusByCode[r.legalDongCd] != null and dateStatusByCode[r.legalDongCd].dltWillChange}"
+							class="badge text-bg-warning mt-1">갱신</span>
+					</td>
 					<td>
 						<span th:text="${pastByCode != null ? pastByCode[r.legalDongCd] : ''}"></span>
 					</td>

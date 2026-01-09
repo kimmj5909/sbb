@@ -75,6 +75,7 @@ public class LegalDongMigrationService {
 		// - 애매 케이스(후보>1) 또는 누락(0)은 자동 반영하지 않고, 별도 조회/수정 대상으로 남긴다.
 		int pastMappedEmndn = 0;
 		int pastMappedLi = 0;
+		List<String> pastMappingDiagnostics = new ArrayList<>();
 		if (pastMappingService != null) {
 			java.util.Set<String> effDts = derived.rows.stream()
 					.map(r -> r.getCrDt() == null ? null : java.time.format.DateTimeFormatter.BASIC_ISO_DATE.format(r.getCrDt()))
@@ -84,6 +85,21 @@ public class LegalDongMigrationService {
 			for (LegalDongPastMappingApplyResult r : mappingResults) {
 				pastMappedEmndn += r.getEmndnUpdatedCnt();
 				pastMappedLi += r.getLiUpdatedCnt();
+
+				// 운영에서 가장 많이 헷갈리는 지점은 "왜 신규 코드 past가 비어있나" 이므로,
+				// 시행일별로 애매/누락 카운트를 함께 남겨 원인 추적이 가능하게 한다.
+				// - old.dlt_dt = eff_dt 조건을 만족하는 후보가 없거나(누락),
+				// - 후보가 2개 이상이라 유니크 매핑이 불가한 경우(애매),
+				// - 리 단위는 (old_emndn_cd||tail2) 형태의 말소 코드가 누락된 경우(말소 리 누락)로 분류한다.
+				if (r.getEmndnAmbiguousCnt() > 0 || r.getEmndnMissingCnt() > 0 || r.getLiMissingOldCnt() > 0) {
+					pastMappingDiagnostics.add("[시행일 " + r.getEffDt() + "] 신규 읍면동 " + r.getNewEmndnCnt()
+							+ "건 중 반영 " + r.getEmndnUpdatedCnt()
+							+ "건 (애매 " + r.getEmndnAmbiguousCnt()
+							+ ", 누락 " + r.getEmndnMissingCnt()
+							+ "), 신규 리 " + r.getNewLiCnt()
+							+ "건 중 반영 " + r.getLiUpdatedCnt()
+							+ "건 (말소 리 누락 " + r.getLiMissingOldCnt() + ")");
+				}
 			}
 		}
 
@@ -105,6 +121,9 @@ public class LegalDongMigrationService {
 		}
 		if (pastMappedEmndn > 0 || pastMappedLi > 0) {
 			updateDetails.add("과거법정동코드 반영: 읍면동 " + pastMappedEmndn + "건, 리 " + pastMappedLi + "건");
+		}
+		if (pastMappingDiagnostics.isEmpty() == false) {
+			updateDetails.addAll(pastMappingDiagnostics);
 		}
 
 		return new LegalDongMigrationApplyResult(

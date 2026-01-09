@@ -50,6 +50,7 @@
 - 전체 `./gradlew test`는 PostgreSQL 미기동이면 `SbbApplicationTests`가 실패할 수 있음.
 - 법정동 관련 테스트만 실행:
   - `./gradlew test --tests com.mysite.sbb.legaldong.*`
+- WSL 환경에서 Gradle 실행 시 `Could not determine a usable wildcard IP for this machine` 오류가 발생할 수 있음(환경 이슈).
 
 ## 최근 커밋(요약)
 아래 커밋들이 이 세션에서 누적된 주요 변경입니다(필요 시 `git show <hash>`로 확인).
@@ -62,3 +63,8 @@
 - `279a08b` CHANGELOG에서 ES는 로그용으로만 정리(문서)
 - `8329423` 인라인 입력(과거코드/말소일자) 숫자 제한 강화
 - `650fb9a` ES 비밀번호 외부 설정(config)로 분리(.gitignore + example)
+
+## 2026-01-09 추가 메모(이번 턴)
+- 미리보기 화면에 DB 스냅샷 대비 일자(cr/dlt) 갱신 필요 여부를 셀 단위로 표시(`갱신` 배지 + DB값 비교).
+- 미리보기 CSV 다운로드에서 한글 깨짐/파일명 깨짐 완화를 위해 UTF-8 BOM 및 `filename*` 헤더를 추가.
+- DB 적용 결과에 시행일별 과거코드 매핑 애매/누락/말소 리 누락 카운트를 출력해 원인 추적을 보강.

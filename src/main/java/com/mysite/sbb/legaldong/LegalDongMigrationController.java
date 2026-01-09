@@ -73,6 +73,9 @@ public class LegalDongMigrationController {
 		model.addAttribute("pageNumbers", buildPageNumbers(preview));
 		model.addAttribute("sizeOptions", List.of(50, 200, 400));
 		model.addAttribute("pastByCode", buildPastByCode(preview.getEntries()));
+		// 미리보기에서 "생성/말소일자 정합성"을 함께 확인할 수 있도록,
+		// DB 스냅샷 기준으로 이번 업로드로 cr_dt(LEAST) / dlt_dt(GREATEST)가 갱신될지 여부를 계산해 내려준다.
+		model.addAttribute("dateStatusByCode", buildDateStatusByCode(preview.getEntries()));
 		return "admin/legal_dong_migration";
 	}
 
@@ -109,6 +112,85 @@ public class LegalDongMigrationController {
 		return java.util.Collections.unmodifiableMap(result);
 	}
 
+	private Map<String, DateStatus> buildDateStatusByCode(List<LegalDongDerivedRow> entries) {
+		if (entries == null || entries.isEmpty()) {
+			return Map.of();
+		}
+
+		List<String> codes = entries.stream()
+				.map(LegalDongDerivedRow::getLegalDongCd)
+				.filter(v -> v != null && v.isBlank() == false)
+				.map(String::trim)
+				.toList();
+
+		Map<String, LegalDongJdbcSnapshotRepository.SnapshotRow> before;
+		try {
+			before = snapshotRepository.findByLegalDongCds(codes);
+		} catch (Exception ex) {
+			// 스냅샷 조회 실패(테이블 삭제/권한/연결 문제 등) 시, 미리보기 화면 자체는 유지한다.
+			// - 이 경우 날짜 정합성 표시만 생략된다.
+			return Map.of();
+		}
+		java.util.Map<String, DateStatus> result = new java.util.HashMap<>();
+
+		for (LegalDongDerivedRow incoming : entries) {
+			String code = incoming.getLegalDongCd();
+			if (code == null || code.isBlank()) {
+				continue;
+			}
+
+			LegalDongJdbcSnapshotRepository.SnapshotRow snapshot = before.get(code);
+			String beforeCr = snapshot == null ? null : snapshot.crDt();
+			String beforeDlt = snapshot == null ? null : snapshot.dltDt();
+			String incomingCr = toYyyyMmDd(incoming.getCrDt());
+			String incomingDlt = toYyyyMmDd(incoming.getDltDt());
+
+			boolean crWillChange = compareMinChange(beforeCr, incomingCr);
+			boolean dltWillChange = compareMaxChange(beforeDlt, incomingDlt);
+			boolean isNew = snapshot == null;
+
+			result.put(code, new DateStatus(isNew, beforeCr, beforeDlt, incomingCr, incomingDlt, crWillChange, dltWillChange));
+		}
+
+		return java.util.Collections.unmodifiableMap(result);
+	}
+
+	private boolean compareMaxChange(String before, String incoming) {
+		// dlt_dt는 GREATEST 규칙이므로, incoming이 더 크면 변경된다.
+		if (before == null) {
+			return incoming != null;
+		}
+		if (incoming == null) {
+			return false;
+		}
+		return incoming.compareTo(before) > 0;
+	}
+
+	private boolean compareMinChange(String before, String incoming) {
+		// cr_dt는 LEAST 규칙이므로, incoming이 더 작으면 변경된다.
+		if (before == null) {
+			return incoming != null;
+		}
+		if (incoming == null) {
+			return false;
+		}
+		return incoming.compareTo(before) < 0;
+	}
+
+	private String toYyyyMmDd(java.time.LocalDate value) {
+		return value == null ? null : YYYYMMDD.format(value);
+	}
+
+	public record DateStatus(
+			boolean isNew,
+			String beforeCrDt,
+			String beforeDltDt,
+			String incomingCrDt,
+			String incomingDltDt,
+			boolean crWillChange,
+			boolean dltWillChange) {
+	}
+
 	/**
 	 * 미리보기 파생 결과 전체를 CSV로 다운로드한다.
 	 *
@@ -123,7 +205,7 @@ public class LegalDongMigrationController {
 		byte[] bytes = (byte[]) session.getAttribute(SESSION_KEY_PREVIEW_BYTES);
 		if (bytes == null || bytes.length == 0) {
 			return ResponseEntity.badRequest()
-					.contentType(MediaType.TEXT_PLAIN)
+					.contentType(new MediaType("text", "plain", StandardCharsets.UTF_8))
 					.body("미리보기 데이터가 없습니다. 엑셀 파일을 먼저 업로드하세요.".getBytes(StandardCharsets.UTF_8));
 		}
 
@@ -147,14 +229,22 @@ public class LegalDongMigrationController {
 			csv.append("\r\n");
 		}
 
+		// Excel이 UTF-8 CSV를 ANSI(로컬 코드페이지)로 오인해 한글이 깨지는 경우가 있어, UTF-8 BOM을 추가한다.
+		// - DB 적재용으로 사용하는 경우에도 BOM은 일반적으로 무해하다.
+		byte[] body = ("\uFEFF" + csv).getBytes(StandardCharsets.UTF_8);
+
+		String fallbackName = toAsciiFileName(csvFileName);
+		String encodedFileName = java.net.URLEncoder.encode(csvFileName, StandardCharsets.UTF_8).replace("+", "%20");
 		return ResponseEntity.ok()
-				.header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + csvFileName + "\"")
+				.header(HttpHeaders.CONTENT_DISPOSITION,
+						"attachment; filename=\"" + fallbackName + "\"; filename*=UTF-8''" + encodedFileName)
 				.contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
-				.body(csv.toString().getBytes(StandardCharsets.UTF_8));
+				.body(body);
 	}
 
 	@PostMapping("/migration/preview")
-	public String preview(@RequestParam("file") MultipartFile file, HttpSession session, RedirectAttributes redirectAttributes) {
+	public String preview(@RequestParam(value = "file", required = false) MultipartFile file, HttpSession session,
+			RedirectAttributes redirectAttributes) {
 		byte[] bytes = readFileBytes(file, redirectAttributes);
 		if (bytes == null) {
 			return "redirect:/admin/legal-dong/migration";
@@ -270,5 +360,16 @@ public class LegalDongMigrationController {
 			base = base.substring(0, base.length() - 5);
 		}
 		return base + ".derived.csv";
+	}
+
+	private String toAsciiFileName(String fileName) {
+		if (fileName == null || fileName.isBlank()) {
+			return "legal_dong_preview.csv";
+		}
+		String normalized = fileName.replaceAll("[^A-Za-z0-9._-]", "_");
+		if (normalized.isBlank()) {
+			return "legal_dong_preview.csv";
+		}
+		return normalized;
 	}
 }

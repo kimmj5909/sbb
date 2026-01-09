@@ -1,5 +1,11 @@
 # 변경 이력
 
+## 2026-01-09
+- 마이그레이션 미리보기에서 DB 스냅샷 대비 `cr_dt(LEAST)`/`dlt_dt(GREATEST)` 갱신 필요 여부를 셀 단위로 표시해, 일자 정합성(누락/오입력) 확인을 강화.
+- 미리보기 CSV 다운로드의 한글 깨짐/파일명 깨짐을 줄이기 위해 UTF-8 BOM, `filename*` 헤더, `text/plain;charset=UTF-8` 응답을 적용.
+- `/admin/legal-dong/migration/preview` 업로드 요청에서 파일 파트 누락 시 예외 로그가 발생하지 않도록 방어 로직을 보강.
+- DB 적용 결과에 시행일별 과거코드 매핑 애매/누락/말소 리 누락 카운트를 추가로 출력해, 신규 코드 `past_legal_dong_cd` 미반영 원인 추적을 지원.
+
 ## 2026-01-08
 - 법정동 마이그레이션 DB 적용 시, 시행일(cr_dt) 기준으로 신규 코드의 `past_legal_dong_cd`를 자동 업데이트하도록 반영(유니크 매핑만 자동 적용, 애매/누락은 미반영).
 - DevTools RestartClassLoader 환경에서 간헐적으로 `ClassNotFoundException`이 발생하는 이슈가 있어, `spring-boot-devtools` 의존성을 제거해 기동 안정성을 확보(템플릿 캐시는 `spring.thymeleaf.cache=false`로 유지).
