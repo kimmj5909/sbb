@@ -16,6 +16,7 @@
 - 운영에서 스테이징/임시테이블 생성 로그를 남길 수 없는 환경을 위해, CSV 데이터를 VALUES 인라인 테이블로 넣고 INSERT/UPDATE만 수행하는 DBeaver 실행용 스크립트 `scripts/legal_dong_migrate_from_values_dbeaver.sql`을 추가.
 - (테스트용) DBeaver에서 TEMP 테이블 생성→CSV Import→업서트+past 반영을 같은 세션에서 수행할 수 있는 템플릿 스크립트 `scripts/legal_dong_migrate_from_temp_dbeaver_template.sql`을 추가.
 - (테스트용) TEMP 테이블(`pg_temp.tmp_legal_dong_excel_csv`)에 Import 후 `CALL` 한 번으로 처리할 수 있는 프로시저 스크립트 `scripts/legal_dong_migrate_from_temp_proc.sql`을 추가.
+- (psql 전용) 로컬 CSV를 `\copy`로 TEMP 테이블에 적재한 뒤 `CALL`로 처리하는 드라이버 스크립트 `scripts/legal_dong_migrate_from_psql_local_csv.sql`을 추가.
 
 ## 2026-01-08
 - 법정동 마이그레이션 DB 적용 시, 시행일(cr_dt) 기준으로 신규 코드의 `past_legal_dong_cd`를 자동 업데이트하도록 반영(유니크 매핑만 자동 적용, 애매/누락은 미반영).
