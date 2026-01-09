@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -45,6 +46,7 @@ public class LegalDongMigrationController {
 	private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.BASIC_ISO_DATE;
 
 	private final LegalDongMigrationService migrationService;
+	private final LegalDongJdbcSnapshotRepository snapshotRepository;
 
 	@GetMapping("/migration")
 	public String migrationPage() {
@@ -65,7 +67,87 @@ public class LegalDongMigrationController {
 		model.addAttribute("preview", preview);
 		model.addAttribute("fileName", fileName != null ? fileName : "(업로드 파일)");
 		model.addAttribute("pageNumbers", buildPageNumbers(preview));
+		model.addAttribute("dateChecks", buildDateChecks(preview.getEntries()));
 		return "admin/legal_dong_migration";
+	}
+
+	private Map<String, DateCheck> buildDateChecks(List<LegalDongDerivedRow> entries) {
+		if (entries == null || entries.isEmpty()) {
+			return Map.of();
+		}
+
+		List<String> codes = entries.stream()
+				.map(LegalDongDerivedRow::getLegalDongCd)
+				.filter(v -> v != null && v.isBlank() == false)
+				.map(String::trim)
+				.toList();
+
+		Map<String, LegalDongJdbcSnapshotRepository.SnapshotRow> before = snapshotRepository.findByLegalDongCds(codes);
+
+		java.util.Map<String, DateCheck> result = new java.util.HashMap<>();
+		for (LegalDongDerivedRow row : entries) {
+			String code = row.getLegalDongCd();
+			if (code == null || code.isBlank()) {
+				continue;
+			}
+
+			String expectedCrDt = row.getCrDt() == null ? null : YYYYMMDD.format(row.getCrDt());
+			String expectedDltDt = row.getDltDt() == null ? null : YYYYMMDD.format(row.getDltDt());
+			LegalDongJdbcSnapshotRepository.SnapshotRow db = before.get(code);
+
+			if (db == null) {
+				result.put(code, new DateCheck(true, null, null, expectedCrDt, expectedDltDt, true, true));
+				continue;
+			}
+
+			String targetCrDt = least(db.crDt(), expectedCrDt);
+			String targetDltDt = greatest(db.dltDt(), expectedDltDt);
+			boolean crOk = equalsNullable(db.crDt(), targetCrDt);
+			boolean dltOk = equalsNullable(db.dltDt(), targetDltDt);
+			result.put(code, new DateCheck(false, db.crDt(), db.dltDt(), targetCrDt, targetDltDt, crOk, dltOk));
+		}
+
+		return java.util.Collections.unmodifiableMap(result);
+	}
+
+	private boolean equalsNullable(String a, String b) {
+		if (a == null && b == null) {
+			return true;
+		}
+		if (a == null || b == null) {
+			return false;
+		}
+		return a.equals(b);
+	}
+
+	private String least(String a, String b) {
+		if (a == null) {
+			return b;
+		}
+		if (b == null) {
+			return a;
+		}
+		return a.compareTo(b) <= 0 ? a : b;
+	}
+
+	private String greatest(String a, String b) {
+		if (a == null) {
+			return b;
+		}
+		if (b == null) {
+			return a;
+		}
+		return a.compareTo(b) >= 0 ? a : b;
+	}
+
+	public record DateCheck(
+			boolean isNew,
+			String dbCrDt,
+			String dbDltDt,
+			String targetCrDt,
+			String targetDltDt,
+			boolean crOk,
+			boolean dltOk) {
 	}
 
 	/**
