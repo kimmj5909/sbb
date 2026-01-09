@@ -33,6 +33,7 @@ public class LegalDongMigrationService {
 	private final LegalDongJdbcUpsertRepository jdbcUpsertRepository;
 	private final LegalDongJdbcSnapshotRepository snapshotRepository;
 	private final LegalDongPastMappingService pastMappingService;
+	private final LegalDongMigrationRunRepository migrationRunRepository;
 
 	public LegalDongMigrationPreviewResult preview(byte[] xlsxBytes, int page, int size) {
 		LegalDongExcelParser.ParseResult parsed = parse(xlsxBytes);
@@ -60,9 +61,24 @@ public class LegalDongMigrationService {
 	}
 
 	@Transactional
-	public LegalDongMigrationApplyResult apply(byte[] xlsxBytes, String operatorId) {
+	public LegalDongMigrationApplyResult apply(byte[] xlsxBytes, String fileName, String operatorId) {
 		LegalDongExcelParser.ParseResult parsed = parse(xlsxBytes);
 		DerivedResult derived = deriveRows(parsed.getRows(), parsed.getErrors());
+
+		// 롤백(run) 스냅샷을 먼저 저장한다.
+		// - 1회 실행 단위로만 유지되며, 결과가 기대와 다르면 관리자 UI에서 run_id로 원복할 수 있다.
+		java.util.UUID runId = null;
+		if (migrationRunRepository != null) {
+			String fileSha256 = sha256Hex(xlsxBytes);
+			runId = migrationRunRepository.createRun(fileName, fileSha256, operatorId);
+			List<String> codes = derived.rows.stream()
+					.map(LegalDongDerivedRow::getLegalDongCd)
+					.filter(v -> v != null && v.isBlank() == false)
+					.map(String::trim)
+					.distinct()
+					.toList();
+			migrationRunRepository.snapshotBefore(runId, codes);
+		}
 
 		UpsertChangeSummary upsertChangeSummary = summarizeUpsertChanges(derived.rows);
 
@@ -136,7 +152,25 @@ public class LegalDongMigrationService {
 				upsertChangeSummary.updatedRows,
 				upsertChangeSummary.dltDtUpdatedRows,
 				updateDetails,
-				errors);
+				errors,
+				runId == null ? null : runId.toString());
+	}
+
+	private String sha256Hex(byte[] bytes) {
+		if (bytes == null || bytes.length == 0) {
+			return null;
+		}
+		try {
+			java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+			byte[] digest = md.digest(bytes);
+			StringBuilder sb = new StringBuilder(digest.length * 2);
+			for (byte b : digest) {
+				sb.append(String.format("%02x", b));
+			}
+			return sb.toString();
+		} catch (Exception ex) {
+			return null;
+		}
 	}
 
 	private UpsertChangeSummary summarizeUpsertChanges(List<LegalDongDerivedRow> upsertRows) {

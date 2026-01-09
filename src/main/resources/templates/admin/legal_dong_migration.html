@@ -181,6 +181,16 @@
 			<div class="small">
 				<span th:text="'업서트 대상 ' + ${result.upsertTargetRows} + '건 중 ' + ${result.changedRows} + '건 업데이트 완료'"></span>
 			</div>
+			<div class="mt-2" th:if="${result.runId != null and #strings.isEmpty(result.runId) == false}">
+				<form method="post" th:action="@{/admin/legal-dong/migration/rollback}" class="d-inline">
+					<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+					<input type="hidden" name="runId" th:value="${result.runId}">
+					<button class="btn btn-sm btn-outline-danger" type="submit" data-show-job-overlay="true">
+						이번 적용 롤백
+					</button>
+				</form>
+				<span class="small text-muted ms-2" th:text="'runId: ' + ${result.runId}"></span>
+			</div>
 			<div th:if="${result.updateDetails != null and #lists.isEmpty(result.updateDetails) == false}" class="mt-2 small">
 				<div class="fw-semibold mb-1">업데이트 내역</div>
 				<ul class="mb-0">

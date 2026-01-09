@@ -23,4 +23,7 @@ public class LegalDongMigrationApplyResult {
 	int dltDtUpdatedRows;
 	List<String> updateDetails;
 	List<String> errors;
+
+	// 롤백 식별자: DB 적용 결과가 기대와 다를 경우, 동일 run_id로 원복 가능
+	String runId;
 }

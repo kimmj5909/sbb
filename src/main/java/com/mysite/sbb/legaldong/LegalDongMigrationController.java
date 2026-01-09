@@ -42,10 +42,12 @@ public class LegalDongMigrationController {
 
 	private static final String SESSION_KEY_PREVIEW_BYTES = "legalDongMigrationPreviewBytes";
 	private static final String SESSION_KEY_PREVIEW_FILENAME = "legalDongMigrationPreviewFileName";
+	private static final String SESSION_KEY_LAST_RUN_ID = "legalDongMigrationLastRunId";
 	private static final java.time.format.DateTimeFormatter YYYYMMDD = java.time.format.DateTimeFormatter.BASIC_ISO_DATE;
 
 	private final LegalDongMigrationService migrationService;
 	private final LegalDongJdbcSnapshotRepository snapshotRepository;
+	private final LegalDongMigrationRunRepository migrationRunRepository;
 
 	@GetMapping("/migration")
 	public String migrationPage() {
@@ -274,13 +276,49 @@ public class LegalDongMigrationController {
 		}
 
 		String operatorId = authentication != null ? authentication.getName() : "SYSTEM";
-		LegalDongMigrationApplyResult result = migrationService.apply(bytes, operatorId);
+		LegalDongMigrationApplyResult result = migrationService.apply(bytes, fileName, operatorId);
+		if (result != null && result.getRunId() != null && result.getRunId().isBlank() == false) {
+			session.setAttribute(SESSION_KEY_LAST_RUN_ID, result.getRunId());
+		}
 
 		model.addAttribute("result", result);
 		model.addAttribute("fileName", fileName != null ? fileName : "(업로드 파일)");
 		session.removeAttribute(SESSION_KEY_PREVIEW_BYTES);
 		session.removeAttribute(SESSION_KEY_PREVIEW_FILENAME);
 		return "admin/legal_dong_migration";
+	}
+
+	@PostMapping("/migration/rollback")
+	public String rollback(@RequestParam(value = "runId", required = false) String runId, Authentication authentication, HttpSession session,
+			RedirectAttributes redirectAttributes) {
+		String operatorId = authentication != null ? authentication.getName() : "SYSTEM";
+
+		String resolvedRunId = runId;
+		if (resolvedRunId == null || resolvedRunId.isBlank()) {
+			Object sessionRun = session.getAttribute(SESSION_KEY_LAST_RUN_ID);
+			resolvedRunId = sessionRun == null ? null : sessionRun.toString();
+		}
+
+		if (resolvedRunId == null || resolvedRunId.isBlank()) {
+			redirectAttributes.addFlashAttribute("adminMessage", "롤백할 실행(runId)이 없습니다. DB 적용 후 다시 시도하세요.");
+			return "redirect:/admin/legal-dong/migration";
+		}
+
+		try {
+			java.util.UUID uuid = java.util.UUID.fromString(resolvedRunId.trim());
+			LegalDongMigrationRunRepository.RollbackResult r = migrationRunRepository.rollback(uuid, operatorId);
+			if (r.message() != null) {
+				redirectAttributes.addFlashAttribute("adminMessage", r.message());
+			} else {
+				redirectAttributes.addFlashAttribute("adminMessage",
+						"롤백 완료(runId=" + resolvedRunId + "): 스냅샷 " + r.snapshotRows() + "건 중 복원 " + r.restoredRows()
+								+ "건, 삭제 " + r.deletedRows() + "건");
+			}
+		} catch (Exception ex) {
+			redirectAttributes.addFlashAttribute("adminMessage", "롤백 실패: " + ex.getMessage());
+		}
+
+		return "redirect:/admin/legal-dong/migration";
 	}
 
 	private byte[] readFileBytes(MultipartFile file, RedirectAttributes redirectAttributes) {

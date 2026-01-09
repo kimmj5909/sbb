@@ -73,6 +73,60 @@ public class LegalDongSchemaInitializer {
 		ensureColumn("dlt_dt", "varchar(8)");
 		ensureColumn("past_legal_dong_cd", "varchar(10)");
 		ensureColumn("use_yn", "varchar(1)");
+
+		// ==========================
+		// 마이그레이션 롤백(1회 실행 단위)용 스냅샷 테이블
+		// ==========================
+		// 요구사항
+		// - 관리자가 엑셀 업로드 → DB 적용 후, 결과가 기대와 다르면 직전 적용을 되돌릴 수 있어야 한다.
+		// - 별도 이력테이블을 상시 운영하지 않는 전제에서, "마이그레이션 실행 단위"로만 스냅샷을 남긴다.
+		//
+		// 설계
+		// - run: 실행 메타(누가/언제/무슨 파일)
+		// - run_row: 실행 대상 legal_dong_cd별 "적용 전" 스냅샷
+		//   - existed=false: 적용 전에는 없었던 코드(롤백 시 DELETE)
+		//   - existed=true: 적용 전 스냅샷으로 복원(UPDATE)
+		String runDdl = """
+				CREATE TABLE IF NOT EXISTS tb_legal_dong_migration_run (
+					run_id              uuid         NOT NULL,
+					file_name           varchar(255) NULL,
+					file_sha256         varchar(64)  NULL,
+					operator_id         varchar(100) NULL,
+					created_at          timestamptz  NOT NULL DEFAULT now(),
+					rolled_back_at      timestamptz  NULL,
+					CONSTRAINT tb_legal_dong_migration_run_pk PRIMARY KEY (run_id)
+				);
+				""";
+
+		String runRowDdl = """
+				CREATE TABLE IF NOT EXISTS tb_legal_dong_migration_run_row (
+					run_id              uuid         NOT NULL,
+					legal_dong_cd       varchar(10)  NOT NULL,
+					existed             boolean      NOT NULL,
+
+					legal_dong_nm       varchar(200) NULL,
+					ctprv_cd            varchar(2)   NULL,
+					ctprv_nm            varchar(50)  NULL,
+					sgng_cd             varchar(5)   NULL,
+					sgng_nm             varchar(50)  NULL,
+					emndn_cd            varchar(8)   NULL,
+					emndn_nm            varchar(50)  NULL,
+					li_cd               varchar(10)  NULL,
+					li_nm               varchar(50)  NULL,
+					rank                integer      NULL,
+					cr_dt               varchar(8)   NULL,
+					dlt_dt              varchar(8)   NULL,
+					past_legal_dong_cd  varchar(10)  NULL,
+					use_yn              varchar(1)   NULL,
+
+					CONSTRAINT tb_legal_dong_migration_run_row_pk PRIMARY KEY (run_id, legal_dong_cd),
+					CONSTRAINT tb_legal_dong_migration_run_row_fk FOREIGN KEY (run_id)
+						REFERENCES tb_legal_dong_migration_run(run_id)
+				);
+				""";
+
+		jdbcTemplate.execute(runDdl);
+		jdbcTemplate.execute(runRowDdl);
 	}
 
 	private void ensureColumn(String columnName, String columnType) {
