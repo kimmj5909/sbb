@@ -134,14 +134,6 @@ public class LegalDongPastMappingJdbcRepository {
 					LEFT JOIN old_li_tails olt ON olt.old_emndn_cd8 = o.old_emndn_cd8
 					LEFT JOIN new_li_tails nlt ON nlt.new_emndn_cd8 = n.new_emndn_cd8
 				),
-				emndn_agg AS (
-					SELECT
-						n.new_emndn_cd10,
-						count(c.old_emndn_cd10) AS candidate_cnt
-					FROM new_emndn n
-					LEFT JOIN emndn_candidates c ON c.new_emndn_cd10 = n.new_emndn_cd10
-					GROUP BY n.new_emndn_cd10
-				),
 				new_li AS (
 					SELECT
 						n.legal_dong_cd AS new_li_cd,
@@ -164,6 +156,31 @@ public class LegalDongPastMappingJdbcRepository {
 						r.*,
 						sum(CASE WHEN r.score = r.max_score THEN 1 ELSE 0 END) OVER (PARTITION BY r.new_emndn_cd10) AS top_ties
 					FROM emndn_ranked r
+				),
+				emndn_scored_agg AS (
+					-- 1 신규 코드당 후보 요약
+					-- - candidate_cnt: 후보 row 수(점수 0도 포함)
+					-- - max_score: 최고 점수(후보가 없으면 null)
+					-- - top_ties: 최고 점수 동률 개수(후보가 없으면 null)
+					SELECT
+						s.new_emndn_cd10,
+						count(*) AS candidate_cnt,
+						max(s.max_score) AS max_score,
+						max(s.top_ties) AS top_ties
+					FROM emndn_scored s
+					GROUP BY s.new_emndn_cd10
+				),
+				emndn_diag AS (
+					-- 신규 코드 전체를 기준으로 누락/애매 판정
+					-- - 누락: 후보 0 또는 max_score=0 (유효 매칭 불가)
+					-- - 애매: max_score>0 이면서 top_ties>1 (최고 점수 동률로 유니크 선택 불가)
+					SELECT
+						n.new_emndn_cd10,
+						coalesce(a.candidate_cnt, 0) AS candidate_cnt,
+						coalesce(a.max_score, 0) AS max_score,
+						coalesce(a.top_ties, 0) AS top_ties
+					FROM new_emndn n
+					LEFT JOIN emndn_scored_agg a ON a.new_emndn_cd10 = n.new_emndn_cd10
 				),
 				emndn_unique_map AS (
 					SELECT
@@ -203,8 +220,8 @@ public class LegalDongPastMappingJdbcRepository {
 				SELECT
 					(SELECT count(*) FROM old_emndn) AS old_emndn_cnt,
 					(SELECT count(*) FROM new_emndn) AS new_emndn_cnt,
-					(SELECT count(*) FROM emndn_agg WHERE candidate_cnt = 0) AS emndn_missing_cnt,
-					(SELECT count(*) FROM emndn_agg WHERE candidate_cnt > 1) AS emndn_ambiguous_cnt,
+					(SELECT count(*) FROM emndn_diag WHERE candidate_cnt = 0 OR max_score = 0) AS emndn_missing_cnt,
+					(SELECT count(*) FROM emndn_diag WHERE max_score > 0 AND top_ties > 1) AS emndn_ambiguous_cnt,
 					(SELECT count(*) FROM old_li) AS old_li_cnt,
 					(SELECT count(*) FROM new_li) AS new_li_cnt,
 					(SELECT missing_cnt FROM li_missing_old) AS li_missing_old_cnt
