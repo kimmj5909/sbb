@@ -14,6 +14,7 @@
 - DBeaver에서 CSV(엑셀 동일 컬럼) Import 후 스크립트만으로 업서트+과거코드 자동반영을 수행할 수 있도록 `scripts/legal_dong_migrate_from_csv_dbeaver.sql`을 추가.
 - 운영에서 테이블 생성 없이(DLL 불가) DBeaver Import→프로시저 호출로 처리할 수 있도록 스테이징 테이블 기반 프로시저 스크립트 `scripts/legal_dong_migrate_from_stage_proc.sql`을 추가.
 - 운영에서 스테이징/임시테이블 생성 로그를 남길 수 없는 환경을 위해, CSV 데이터를 VALUES 인라인 테이블로 넣고 INSERT/UPDATE만 수행하는 DBeaver 실행용 스크립트 `scripts/legal_dong_migrate_from_values_dbeaver.sql`을 추가.
+- (테스트용) DBeaver에서 TEMP 테이블 생성→CSV Import→업서트+past 반영을 같은 세션에서 수행할 수 있는 템플릿 스크립트 `scripts/legal_dong_migrate_from_temp_dbeaver_template.sql`을 추가.
 
 ## 2026-01-08
 - 법정동 마이그레이션 DB 적용 시, 시행일(cr_dt) 기준으로 신규 코드의 `past_legal_dong_cd`를 자동 업데이트하도록 반영(유니크 매핑만 자동 적용, 애매/누락은 미반영).
