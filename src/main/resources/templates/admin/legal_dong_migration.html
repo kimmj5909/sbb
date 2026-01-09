@@ -98,6 +98,16 @@
 		</div>
 
 		<div class="table-responsive">
+			<div class="d-flex justify-content-end align-items-center gap-2 mb-2">
+				<form method="get" th:action="@{/admin/legal-dong/migration/preview}" class="d-flex align-items-center gap-2">
+					<input type="hidden" name="page" value="0">
+					<label for="previewSize" class="small text-muted">표시 개수</label>
+					<select id="previewSize" name="size" class="form-select form-select-sm" style="width: 120px;"
+						onchange="this.form.submit()">
+						<option th:each="s : ${sizeOptions}" th:value="${s}" th:text="${s}" th:selected="${preview.size == s}"></option>
+					</select>
+				</form>
+			</div>
 			<table class="table table-sm table-striped align-middle">
 				<thead class="table-light">
 				<tr>
@@ -107,14 +117,11 @@
 					<th>rank</th>
 					<th>생성일자</th>
 					<th>말소일자</th>
-					<th>DB 생성일자</th>
-					<th>DB 말소일자</th>
-					<th>일자 정합성</th>
+					<th>과거법정동코드</th>
 				</tr>
 				</thead>
 				<tbody>
 				<tr th:each="r : ${preview.entries}">
-					<th:block th:with="dc=${dateChecks != null ? dateChecks[r.legalDongCd] : null}">
 					<td th:text="${r.rowNumber}"></td>
 					<td th:text="${r.legalDongCd}"></td>
 					<td th:text="${r.legalDongNm}"></td>
@@ -122,29 +129,11 @@
 					<td th:text="${r.crDt}"></td>
 					<td th:text="${r.dltDt}"></td>
 					<td>
-						<span th:if="${dc != null and dc.isNew}" class="text-muted">-</span>
-						<span th:if="${dc != null and dc.isNew == false}" th:text="${dc.dbCrDt}"></span>
+						<span th:text="${pastByCode != null ? pastByCode[r.legalDongCd] : ''}"></span>
 					</td>
-					<td>
-						<span th:if="${dc != null and dc.isNew}" class="text-muted">-</span>
-						<span th:if="${dc != null and dc.isNew == false}" th:text="${dc.dbDltDt}"></span>
-					</td>
-					<td>
-						<span th:if="${dc == null}" class="badge text-bg-secondary">N/A</span>
-						<span th:if="${dc != null and dc.isNew}" class="badge text-bg-primary">신규</span>
-						<span th:if="${dc != null and dc.isNew == false}">
-							<span class="badge me-1"
-								th:classappend="${dc.crOk} ? ' text-bg-success' : ' text-bg-warning'"
-								th:text="${dc.crOk} ? 'CR OK' : 'CR 변경'"></span>
-							<span class="badge"
-								th:classappend="${dc.dltOk} ? ' text-bg-success' : ' text-bg-warning'"
-								th:text="${dc.dltOk} ? 'DLT OK' : 'DLT 변경'"></span>
-						</span>
-					</td>
-					</th:block>
 				</tr>
 				<tr th:if="${#lists.isEmpty(preview.entries)}">
-					<td colspan="9" class="text-center text-muted">표시할 데이터가 없습니다.</td>
+					<td colspan="7" class="text-center text-muted">표시할 데이터가 없습니다.</td>
 				</tr>
 				</tbody>
 			</table>
@@ -153,17 +142,17 @@
 		<nav th:if="${preview.totalPages > 1}">
 			<ul class="pagination justify-content-center">
 				<li class="page-item" th:classappend="${preview.page == 0} ? ' disabled'">
-					<a class="page-link" th:href="@{/admin/legal-dong/migration/preview(page=${preview.page - 1})}">이전</a>
+					<a class="page-link" th:href="@{/admin/legal-dong/migration/preview(page=${preview.page - 1}, size=${preview.size})}">이전</a>
 				</li>
 				<li class="page-item"
 					th:each="p : ${pageNumbers}"
 					th:classappend="${p == preview.page} ? ' active'">
 					<a class="page-link"
 						th:text="${p + 1}"
-						th:href="@{/admin/legal-dong/migration/preview(page=${p})}"></a>
+						th:href="@{/admin/legal-dong/migration/preview(page=${p}, size=${preview.size})}"></a>
 				</li>
 				<li class="page-item" th:classappend="${preview.page + 1 >= preview.totalPages} ? ' disabled'">
-					<a class="page-link" th:href="@{/admin/legal-dong/migration/preview(page=${preview.page + 1})}">다음</a>
+					<a class="page-link" th:href="@{/admin/legal-dong/migration/preview(page=${preview.page + 1}, size=${preview.size})}">다음</a>
 				</li>
 			</ul>
 		</nav>

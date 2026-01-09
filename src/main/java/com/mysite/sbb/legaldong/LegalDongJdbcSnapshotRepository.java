@@ -43,6 +43,7 @@ public class LegalDongJdbcSnapshotRepository {
 					rank,
 					cr_dt,
 					dlt_dt,
+					past_legal_dong_cd,
 					use_yn
 				FROM tb_legal_dong_l
 				WHERE legal_dong_cd IN (:codes)
@@ -71,6 +72,7 @@ public class LegalDongJdbcSnapshotRepository {
 					(Integer) rs.getObject("rank"),
 					rs.getString("cr_dt"),
 					rs.getString("dlt_dt"),
+					rs.getString("past_legal_dong_cd"),
 					rs.getString("use_yn")));
 		});
 		return result;
@@ -90,7 +92,7 @@ public class LegalDongJdbcSnapshotRepository {
 			Integer rank,
 			String crDt,
 			String dltDt,
+			String pastLegalDongCd,
 			String useYn) {
 	}
 }
-

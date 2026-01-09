@@ -2,7 +2,6 @@ package com.mysite.sbb.legaldong;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +42,7 @@ public class LegalDongMigrationController {
 
 	private static final String SESSION_KEY_PREVIEW_BYTES = "legalDongMigrationPreviewBytes";
 	private static final String SESSION_KEY_PREVIEW_FILENAME = "legalDongMigrationPreviewFileName";
-	private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.BASIC_ISO_DATE;
+	private static final java.time.format.DateTimeFormatter YYYYMMDD = java.time.format.DateTimeFormatter.BASIC_ISO_DATE;
 
 	private final LegalDongMigrationService migrationService;
 	private final LegalDongJdbcSnapshotRepository snapshotRepository;
@@ -54,7 +53,11 @@ public class LegalDongMigrationController {
 	}
 
 	@GetMapping("/migration/preview")
-	public String previewPage(@RequestParam(value = "page", defaultValue = "0") int page, Model model, HttpSession session,
+	public String previewPage(
+			@RequestParam(value = "page", defaultValue = "0") int page,
+			@RequestParam(value = "size", defaultValue = "50") int size,
+			Model model,
+			HttpSession session,
 			RedirectAttributes redirectAttributes) {
 		byte[] bytes = (byte[]) session.getAttribute(SESSION_KEY_PREVIEW_BYTES);
 		if (bytes == null || bytes.length == 0) {
@@ -63,15 +66,25 @@ public class LegalDongMigrationController {
 		}
 
 		String fileName = (String) session.getAttribute(SESSION_KEY_PREVIEW_FILENAME);
-		LegalDongMigrationPreviewResult preview = migrationService.preview(bytes, page, LegalDongMigrationService.DEFAULT_PREVIEW_PAGE_SIZE);
+		int resolvedSize = resolvePreviewSize(size);
+		LegalDongMigrationPreviewResult preview = migrationService.preview(bytes, page, resolvedSize);
 		model.addAttribute("preview", preview);
 		model.addAttribute("fileName", fileName != null ? fileName : "(업로드 파일)");
 		model.addAttribute("pageNumbers", buildPageNumbers(preview));
-		model.addAttribute("dateChecks", buildDateChecks(preview.getEntries()));
+		model.addAttribute("sizeOptions", List.of(50, 200, 400));
+		model.addAttribute("pastByCode", buildPastByCode(preview.getEntries()));
 		return "admin/legal_dong_migration";
 	}
 
-	private Map<String, DateCheck> buildDateChecks(List<LegalDongDerivedRow> entries) {
+	private int resolvePreviewSize(int size) {
+		if (size == 50 || size == 200 || size == 400) {
+			return size;
+		}
+		// UI 제공값 외 입력은 기본값으로 방어한다.
+		return 50;
+	}
+
+	private Map<String, String> buildPastByCode(List<LegalDongDerivedRow> entries) {
 		if (entries == null || entries.isEmpty()) {
 			return Map.of();
 		}
@@ -84,70 +97,16 @@ public class LegalDongMigrationController {
 
 		Map<String, LegalDongJdbcSnapshotRepository.SnapshotRow> before = snapshotRepository.findByLegalDongCds(codes);
 
-		java.util.Map<String, DateCheck> result = new java.util.HashMap<>();
-		for (LegalDongDerivedRow row : entries) {
-			String code = row.getLegalDongCd();
-			if (code == null || code.isBlank()) {
+		java.util.Map<String, String> result = new java.util.HashMap<>();
+		for (var e : before.entrySet()) {
+			String code = e.getKey();
+			var row = e.getValue();
+			if (row == null) {
 				continue;
 			}
-
-			String expectedCrDt = row.getCrDt() == null ? null : YYYYMMDD.format(row.getCrDt());
-			String expectedDltDt = row.getDltDt() == null ? null : YYYYMMDD.format(row.getDltDt());
-			LegalDongJdbcSnapshotRepository.SnapshotRow db = before.get(code);
-
-			if (db == null) {
-				result.put(code, new DateCheck(true, null, null, expectedCrDt, expectedDltDt, true, true));
-				continue;
-			}
-
-			String targetCrDt = least(db.crDt(), expectedCrDt);
-			String targetDltDt = greatest(db.dltDt(), expectedDltDt);
-			boolean crOk = equalsNullable(db.crDt(), targetCrDt);
-			boolean dltOk = equalsNullable(db.dltDt(), targetDltDt);
-			result.put(code, new DateCheck(false, db.crDt(), db.dltDt(), targetCrDt, targetDltDt, crOk, dltOk));
+			result.put(code, row.pastLegalDongCd());
 		}
-
 		return java.util.Collections.unmodifiableMap(result);
-	}
-
-	private boolean equalsNullable(String a, String b) {
-		if (a == null && b == null) {
-			return true;
-		}
-		if (a == null || b == null) {
-			return false;
-		}
-		return a.equals(b);
-	}
-
-	private String least(String a, String b) {
-		if (a == null) {
-			return b;
-		}
-		if (b == null) {
-			return a;
-		}
-		return a.compareTo(b) <= 0 ? a : b;
-	}
-
-	private String greatest(String a, String b) {
-		if (a == null) {
-			return b;
-		}
-		if (b == null) {
-			return a;
-		}
-		return a.compareTo(b) >= 0 ? a : b;
-	}
-
-	public record DateCheck(
-			boolean isNew,
-			String dbCrDt,
-			String dbDltDt,
-			String targetCrDt,
-			String targetDltDt,
-			boolean crOk,
-			boolean dltOk) {
 	}
 
 	/**

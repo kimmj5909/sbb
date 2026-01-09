@@ -27,7 +27,7 @@ import lombok.RequiredArgsConstructor;
  */
 public class LegalDongMigrationService {
 
-	public static final int DEFAULT_PREVIEW_PAGE_SIZE = 20;
+	public static final int DEFAULT_PREVIEW_PAGE_SIZE = 50;
 
 	private final LegalDongExcelParser excelParser;
 	private final LegalDongJdbcUpsertRepository jdbcUpsertRepository;
@@ -441,6 +441,18 @@ public class LegalDongMigrationService {
 		if (duplicateRows > 0) {
 			errors.add("[중복코드 병합] 업로드 데이터에서 중복 행 " + duplicateRows + "건을 병합했습니다. "
 					+ "(병합 대상 코드 수=" + duplicatedCodes.size() + ")");
+			// 중복 코드 목록은 경고 영역에서 확인할 수 있도록 별도 라인으로 남긴다.
+			// - 전체가 너무 길어질 수 있어 상한을 둔다.
+			int limit = 200;
+			List<String> sorted = duplicatedCodes.stream().sorted().toList();
+			int shown = Math.min(sorted.size(), limit);
+			errors.add("[중복코드 목록] (표시 " + shown + " / 총 " + sorted.size() + ")");
+			for (int i = 0; i < shown; i++) {
+				errors.add("중복코드: " + sorted.get(i));
+			}
+			if (sorted.size() > shown) {
+				errors.add("중복코드: ... 외 " + (sorted.size() - shown) + "건");
+			}
 		}
 
 		return List.copyOf(merged.values());
