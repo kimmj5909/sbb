@@ -5,6 +5,7 @@
 - 미리보기 CSV 다운로드의 한글 깨짐/파일명 깨짐을 줄이기 위해 UTF-8 BOM, `filename*` 헤더, `text/plain;charset=UTF-8` 응답을 적용.
 - `/admin/legal-dong/migration/preview` 업로드 요청에서 파일 파트 누락 시 예외 로그가 발생하지 않도록 방어 로직을 보강.
 - DB 적용 결과에 시행일별 과거코드 매핑 애매/누락/말소 리 누락 카운트를 추가로 출력해, 신규 코드 `past_legal_dong_cd` 미반영 원인 추적을 지원.
+- 특정 신규 코드 1건 기준으로 과거코드 후보/점수/유니크 매핑 가능 여부를 확인할 수 있는 디버그 SQL(`scripts/legal_dong_past_mapping_debug_one.sql`)을 추가.
 
 ## 2026-01-08
 - 법정동 마이그레이션 DB 적용 시, 시행일(cr_dt) 기준으로 신규 코드의 `past_legal_dong_cd`를 자동 업데이트하도록 반영(유니크 매핑만 자동 적용, 애매/누락은 미반영).
