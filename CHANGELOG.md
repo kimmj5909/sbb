@@ -18,6 +18,7 @@
 - (테스트용) TEMP 테이블(`pg_temp.tmp_legal_dong_excel_csv`)에 Import 후 `CALL` 한 번으로 처리할 수 있는 프로시저 스크립트 `scripts/legal_dong_migrate_from_temp_proc.sql`을 추가.
 - (psql 전용) 로컬 CSV를 `\copy`로 TEMP 테이블에 적재한 뒤 `CALL`로 처리하는 드라이버 스크립트 `scripts/legal_dong_migrate_from_psql_local_csv.sql`을 추가.
 - (서버 CSV) 운영 DB 서버 경로의 CSV를 server-side `COPY FROM`으로 TEMP에 적재한 뒤 `CALL sp_legal_dong_migrate_from_temp`를 실행하는 프로시저 `scripts/legal_dong_migrate_from_server_csv_proc.sql`을 추가.
+- `scripts/2_legal_dong_migrate_from_temp_proc.sql`에서 업서트 전 `sc_fdis_backup.tb_fdis_legal_dong_cd_m_YYYYMMDD_backup` 백업 테이블을 생성하도록 보강(동일 날짜 백업이 이미 있으면 스킵).
 
 ## 2026-01-08
 - 법정동 마이그레이션 DB 적용 시, 시행일(cr_dt) 기준으로 신규 코드의 `past_legal_dong_cd`를 자동 업데이트하도록 반영(유니크 매핑만 자동 적용, 애매/누락은 미반영).
