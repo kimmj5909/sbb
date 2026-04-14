@@ -21,8 +21,9 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.junit.jupiter:junit-jupiter'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-	implementation 'org.elasticsearch.client:elasticsearch-rest-client:8.14.1'// 엘라스틱서치
-	implementation 'co.elastic.clients:elasticsearch-java:8.14.1' // 엘라스틱서치
+	testRuntimeOnly 'com.h2database:h2'
+	implementation 'org.elasticsearch.client:elasticsearch-rest-client:8.19.9'// 엘라스틱서치
+	implementation 'co.elastic.clients:elasticsearch-java:8.19.9' // 엘라스틱서치
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
 	implementation group: 'org.javassist', name: 'javassist', version: '3.15.0-GA'
@@ -41,6 +42,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.thymeleaf.extras:thymeleaf-extras-springsecurity6'
 	implementation 'org.commonmark:commonmark:0.21.0'
+	implementation 'org.jsoup:jsoup:1.17.2'
  // https://mvnrepository.com/artifact/net.postgis/postgis-jdbc
 //	implementation group: 'net.postgis', name: 'postgis-jdbc', version: '2.5.0'
 	
@@ -48,4 +50,23 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+// ---------------------------------------------------------------------------
+// MOIS 법정동 변경내역 게시판: 최신 게시물 첨부 수동 다운로드(운영/로컬 점검용)
+// - 네트워크 접근이 필요하며, 실행 시 외부 사이트에 GET 요청이 발생한다.
+// - 저장 경로는 system property `sbb.legal-dong.mois.download-base-dir`로 오버라이드 가능하다.
+//   예) ./gradlew moisDownloadLatest -Dsbb.legal-dong.mois.download-base-dir=C:\\Users\\kfca\\Desktop\\legal
+// ---------------------------------------------------------------------------
+tasks.register('moisDownloadLatest', JavaExec) {
+	group = 'verification'
+	description = 'Download attachments from latest MOIS legal-dong board post.'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.mysite.sbb.legaldong.mois.MoisLegalDongManualDownloadMain'
+
+	// `./gradlew ... -Dkey=value` 형태로 전달한 system property를 JavaExec JVM에도 전달한다.
+	// (Gradle daemon JVM과 JavaExec는 별도 프로세스이므로 수동 전달이 필요)
+	systemProperties System.getProperties().findAll { k, v ->
+		k != null && k.toString().startsWith('sbb.legal-dong.mois.')
+	}
 }

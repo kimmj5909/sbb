@@ -45,9 +45,9 @@ public class LegalDongJdbcSnapshotRepository {
 					dlt_dt,
 					past_legal_dong_cd,
 					use_yn
-				FROM tb_legal_dong_l
+				FROM %s
 				WHERE legal_dong_cd IN (:codes)
-				""";
+				""".formatted(LegalDongTables.LEGAL_DONG_TABLE);
 
 		MapSqlParameterSource params = new MapSqlParameterSource()
 				.addValue("codes", legalDongCds);

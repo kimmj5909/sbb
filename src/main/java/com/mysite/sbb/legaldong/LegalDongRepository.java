@@ -6,7 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
  * 법정동 엔티티 조회/저장을 위한 Spring Data JPA 리포지토리.
  *
  * 담당 역할
- * - `tb_legal_dong_l` 테이블을 JPA 방식으로 조회/저장할 때 사용한다.
+ * - {@link LegalDongTables#LEGAL_DONG_TABLE} 테이블을 JPA 방식으로 조회/저장할 때 사용한다.
  *
  * 참고
  * - 대량 적재는 성능을 위해 JDBC 업서트(`LegalDongJdbcUpsertRepository`)를 사용한다.

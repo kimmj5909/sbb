@@ -1,6 +1,7 @@
 package com.mysite.sbb.log;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -21,7 +22,6 @@ import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch._types.aggregations.StringTermsAggregate;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
-import co.elastic.clients.elasticsearch._types.query_dsl.RangeQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.SimpleQueryStringQuery;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
@@ -82,12 +82,22 @@ public class LogSearchService {
 		List<Query> must = new ArrayList<>();
 		List<Query> filters = new ArrayList<>();
 
-		// 기간 필터는 필수로 포함한다.
-		filters.add(Query.of(q -> q.range(new RangeQuery.Builder()
-			.field("@timestamp")
-			.gte(JsonData.of(fromInstant))
-			.lte(JsonData.of(toInstant))
-			.build())));
+		/*
+		 * 기간 필터는 반드시 포함한다.
+		 *
+		 * [중요] elasticsearch-java 클라이언트 버전(또는 IDE의 Gradle classpath) 차이로 인해
+		 * RangeQuery Builder API가 달라지는 경우가 있어, DSL Builder 대신 JSON 직렬화 방식으로 고정한다.
+		 * - ES 쿼리 JSON 스펙은 안정적이므로(Elasticsearch 8.x), 런타임/빌드 환경에 덜 민감하다.
+		 */
+		String rangeJson = "{"
+			+ "\"range\":{"
+			+ "\"@timestamp\":{"
+			+ "\"gte\":\"" + fromInstant + "\","
+			+ "\"lte\":\"" + toInstant + "\""
+			+ "}"
+			+ "}"
+			+ "}";
+		filters.add(Query.of(q -> q.withJson(new StringReader(rangeJson))));
 
 		if (StringUtils.hasText(request.getLevel())) {
 			filters.add(Query.of(q -> q.term(t -> t.field("level").value(request.getLevel()))));

@@ -7,7 +7,7 @@ import lombok.Value;
  * 법정동 DB 조회 결과 1건(화면 표출용).
  *
  * 담당 역할
- * - 관리자 화면(`/admin/legal-dong/search`)에서 `tb_legal_dong_l` 데이터를 실시간 조회해 표시한다.
+ * - 관리자 화면(`/admin/legal-dong/search`)에서 {@link LegalDongTables#LEGAL_DONG_TABLE} 데이터를 실시간 조회해 표시한다.
  * - Elasticsearch 문서 스키마가 아닌, "DB 조회 결과"를 그대로 담는 DTO다.
  *
  * 설계 포인트

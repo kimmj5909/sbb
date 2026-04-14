@@ -1,10 +1,14 @@
 package com.mysite.sbb.legaldong;
 
+import java.sql.Array;
+import java.sql.SQLException;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -53,6 +57,13 @@ public class LegalDongMigrationRunRepository {
 			return 0;
 		}
 
+		/*
+		 * 중요: PostgreSQL의 unnest()는 "배열"을 받는 함수이다.
+		 * - NamedParameterJdbcTemplate에 List를 그대로 넘기면, :codes가 (?, ?, ?, ...)로 확장된다.
+		 * - 이 값이 unnest(?, ?, ...)로 변환되며, PostgreSQL은 함수 인자 최대 100개 제한에 걸려
+		 *   "오류: 함수에 최대 100개의 인자를 전달할 수 있음" 예외가 발생한다.
+		 * - 따라서, codes는 반드시 1개의 SQL ARRAY 파라미터로 전달해야 한다.
+		 */
 		String sql = """
 				INSERT INTO tb_legal_dong_migration_run_row (
 					run_id, legal_dong_cd, existed,
@@ -68,15 +79,27 @@ public class LegalDongMigrationRunRepository {
 				FROM (
 					SELECT unnest(:codes)::varchar(10) AS code
 				) c
-				LEFT JOIN tb_legal_dong_l t ON t.legal_dong_cd = c.code
+				LEFT JOIN %s t ON t.legal_dong_cd = c.code
 				ON CONFLICT (run_id, legal_dong_cd) DO NOTHING
-				""";
+				""".formatted(LegalDongTables.LEGAL_DONG_TABLE);
 
-		MapSqlParameterSource params = new MapSqlParameterSource()
-				.addValue("runId", runId)
-				.addValue("codes", legalDongCds);
-
-		return jdbcTemplate.update(sql, params);
+		return jdbcTemplate.getJdbcTemplate().execute((ConnectionCallback<Integer>) con -> {
+			Array codesArray = null;
+			try {
+				codesArray = con.createArrayOf("varchar", legalDongCds.toArray(new String[0]));
+				MapSqlParameterSource params = new MapSqlParameterSource()
+						.addValue("runId", runId)
+						.addValue("codes", codesArray, Types.ARRAY);
+				return jdbcTemplate.update(sql, params);
+			} finally {
+				if (codesArray != null) {
+					try {
+						codesArray.free();
+					} catch (SQLException ignored) {
+					}
+				}
+			}
+		});
 	}
 
 	@Transactional
@@ -101,17 +124,17 @@ public class LegalDongMigrationRunRepository {
 
 		// 1) existed=false: 해당 코드가 실행 전에는 없었으므로 삭제한다.
 		String deleteSql = """
-				DELETE FROM tb_legal_dong_l t
+				DELETE FROM %s t
 				USING tb_legal_dong_migration_run_row r
 				WHERE r.run_id = :runId
 				  AND r.existed = false
 				  AND t.legal_dong_cd = r.legal_dong_cd
-				""";
+				""".formatted(LegalDongTables.LEGAL_DONG_TABLE);
 		int deleted = jdbcTemplate.update(deleteSql, Map.of("runId", runId));
 
 		// 2) existed=true: 실행 전 스냅샷으로 복원한다.
 		String restoreSql = """
-				UPDATE tb_legal_dong_l t
+				UPDATE %s t
 				SET
 					legal_dong_nm = r.legal_dong_nm,
 					ctprv_cd = r.ctprv_cd,
@@ -133,7 +156,7 @@ public class LegalDongMigrationRunRepository {
 				WHERE r.run_id = :runId
 				  AND r.existed = true
 				  AND t.legal_dong_cd = r.legal_dong_cd
-				""";
+				""".formatted(LegalDongTables.LEGAL_DONG_TABLE);
 		MapSqlParameterSource restoreParams = new MapSqlParameterSource()
 				.addValue("runId", runId)
 				.addValue("operatorId", operatorId == null ? "SYSTEM" : operatorId);
@@ -180,4 +203,3 @@ public class LegalDongMigrationRunRepository {
 	public record RollbackResult(int snapshotRows, int restoredRows, int deletedRows, String message) {
 	}
 }
-

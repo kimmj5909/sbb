@@ -30,14 +30,20 @@ public class LegalDongMigrationService {
 	public static final int DEFAULT_PREVIEW_PAGE_SIZE = 50;
 
 	private final LegalDongExcelParser excelParser;
+	private final LegalDongCsvParser csvParser;
 	private final LegalDongJdbcUpsertRepository jdbcUpsertRepository;
 	private final LegalDongJdbcSnapshotRepository snapshotRepository;
 	private final LegalDongPastMappingService pastMappingService;
 	private final LegalDongMigrationRunRepository migrationRunRepository;
 
 	public LegalDongMigrationPreviewResult preview(byte[] xlsxBytes, int page, int size) {
-		LegalDongExcelParser.ParseResult parsed = parse(xlsxBytes);
-		DerivedResult derived = deriveRows(parsed.getRows(), parsed.getErrors());
+		// 하위 호환: 기존 호출은 xlsx 입력으로 간주한다.
+		return preview(xlsxBytes, "legal_dong.xlsx", page, size);
+	}
+
+	public LegalDongMigrationPreviewResult preview(byte[] bytes, String fileName, int page, int size) {
+		ParsedResult parsed = parse(bytes, fileName);
+		DerivedResult derived = deriveRows(parsed.rows, parsed.errors);
 
 		int resolvedSize = size > 0 ? size : DEFAULT_PREVIEW_PAGE_SIZE;
 		int resolvedPage = Math.max(page, 0);
@@ -49,7 +55,7 @@ public class LegalDongMigrationService {
 		List<LegalDongDerivedRow> pageEntries = fromIndex >= toIndex ? List.of() : derived.rows.subList(fromIndex, toIndex);
 
 		return new LegalDongMigrationPreviewResult(
-				parsed.getRows().size(),
+				parsed.rows.size(),
 				derived.rows.size(),
 				derived.upperRows,
 				derived.lowerRows,
@@ -62,8 +68,8 @@ public class LegalDongMigrationService {
 
 	@Transactional
 	public LegalDongMigrationApplyResult apply(byte[] xlsxBytes, String fileName, String operatorId) {
-		LegalDongExcelParser.ParseResult parsed = parse(xlsxBytes);
-		DerivedResult derived = deriveRows(parsed.getRows(), parsed.getErrors());
+		ParsedResult parsed = parse(xlsxBytes, fileName);
+		DerivedResult derived = deriveRows(parsed.rows, parsed.errors);
 
 		// 롤백(run) 스냅샷을 먼저 저장한다.
 		// - 1회 실행 단위로만 유지되며, 결과가 기대와 다르면 관리자 UI에서 run_id로 원복할 수 있다.
@@ -145,7 +151,7 @@ public class LegalDongMigrationService {
 		}
 
 		return new LegalDongMigrationApplyResult(
-				parsed.getRows().size(),
+				parsed.rows.size(),
 				upsertChangeSummary.upsertTargetRows,
 				upsertChangeSummary.changedRows,
 				upsertChangeSummary.insertedRows,
@@ -283,11 +289,54 @@ public class LegalDongMigrationService {
 			String breakdownWarning) {
 	}
 
-	private LegalDongExcelParser.ParseResult parse(byte[] xlsxBytes) {
+	private record ParsedResult(List<LegalDongSourceRow> rows, List<String> errors) {
+	}
+
+	/**
+	 * 입력 파일의 확장자 기준으로 xlsx/csv를 파싱한다.
+	 *
+	 * 주의
+	 * - preview는 업로드 바이트를 세션에 저장했다가 재사용하므로, fileName은 확장자 판별 용도로만 사용한다.
+	 * - 확장자를 알 수 없으면, xlsx 우선 → 실패 시 csv를 시도한다.
+	 */
+	private ParsedResult parse(byte[] bytes, String fileName) {
+		String name = fileName == null ? "" : fileName.trim().toLowerCase();
+		boolean preferCsv = name.endsWith(".csv");
+		boolean preferXlsx = name.endsWith(".xlsx");
+
+		if (preferCsv) {
+			return parseCsv(bytes);
+		}
+		if (preferXlsx) {
+			return parseXlsx(bytes);
+		}
+
+		ParsedResult x = parseXlsx(bytes);
+		if (x.rows != null && x.rows.isEmpty() == false) {
+			return x;
+		}
+		ParsedResult c = parseCsv(bytes);
+		if (c.rows != null && c.rows.isEmpty() == false) {
+			return c;
+		}
+		return x;
+	}
+
+	private ParsedResult parseXlsx(byte[] xlsxBytes) {
 		try {
-			return excelParser.parse(new java.io.ByteArrayInputStream(xlsxBytes));
+			LegalDongExcelParser.ParseResult parsed = excelParser.parse(new java.io.ByteArrayInputStream(xlsxBytes));
+			return new ParsedResult(parsed.getRows(), parsed.getErrors());
 		} catch (Exception ex) {
-			return new LegalDongExcelParser.ParseResult(List.of(), List.of("엑셀 파싱 실패: " + ex.getMessage()));
+			return new ParsedResult(List.of(), List.of("엑셀 파싱 실패: " + ex.getMessage()));
+		}
+	}
+
+	private ParsedResult parseCsv(byte[] csvBytes) {
+		try {
+			LegalDongCsvParser.ParseResult parsed = csvParser.parse(csvBytes);
+			return new ParsedResult(parsed.getRows(), parsed.getErrors());
+		} catch (Exception ex) {
+			return new ParsedResult(List.of(), List.of("CSV 파싱 실패: " + ex.getMessage()));
 		}
 	}
 
@@ -424,7 +473,7 @@ public class LegalDongMigrationService {
 	 * 엑셀 원본에는 동일한 법정동코드(legal_dong_cd)가 중복 등장할 수 있다.
 	 *
 	 * 요구사항(사용자 확인)
-	 * - 법정동코드는 고유 코드이므로 `tb_legal_dong_l`에는 1행=1코드로 유지한다.
+	 * - 법정동코드는 고유 코드이므로 {@link LegalDongTables#LEGAL_DONG_TABLE}에는 1행=1코드로 유지한다.
 	 * - 따라서 업로드 데이터 내부에서 중복이 발견되면, DB 적재 전에 병합(consolidation)한다.
 	 *
 	 * 병합 규칙

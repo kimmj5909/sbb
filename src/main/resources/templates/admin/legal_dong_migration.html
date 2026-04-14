@@ -22,7 +22,7 @@
 	<div class="alert alert-secondary small">
 		<div class="fw-semibold mb-1">업로드 규칙</div>
 		<ul class="mb-0">
-			<li>엑셀 첫 시트에 헤더(예: 행정동코드/시도명/시군구명/읍면동명/법정동코드/동리명/생성일자/말소일자)가 있어야 합니다.</li>
+			<li>xlsx(엑셀) 또는 csv 파일의 헤더에 (예: 행정동코드/시도명/시군구명/읍면동명/법정동코드/동리명/생성일자/말소일자)가 있어야 합니다.</li>
 			<li>법정동코드는 10자리 문자열로 처리하며, 단위 꼬리값이 000 또는 00이면 해당 하위 단위는 "없음(null)"으로 저장합니다.</li>
 			<li>rank는 상위(리 없음)과 하위(리 있음)를 각각 1,2,3...으로 별도 카운트해 단일 컬럼에 저장합니다.</li>
 			<li>말소 여부는 말소일자(dlt_dt)로만 판단하며, use_yn은 최종 dlt_dt 유무로만 결정합니다(활성=Y / 말소=NULL).</li>
@@ -34,7 +34,7 @@
 			<form method="post" enctype="multipart/form-data" th:action="@{/admin/legal-dong/migration/preview}" data-show-job-overlay="true">
 				<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
 				<div class="d-flex flex-wrap gap-2 align-items-center">
-					<input class="form-control" style="max-width: 520px;" type="file" name="file" accept=".xlsx" required>
+					<input class="form-control" style="max-width: 520px;" type="file" name="file" accept=".xlsx,.csv" required>
 					<button class="btn btn-outline-primary" type="submit">미리보기</button>
 				</div>
 				<div class="form-text">미리보기 후 페이지 이동은 서버 세션의 업로드 데이터를 사용합니다.</div>
@@ -75,7 +75,7 @@
 		<form method="post" enctype="multipart/form-data" th:action="@{/admin/legal-dong/migration/apply}" class="mb-3">
 			<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
 			<div class="d-flex flex-wrap gap-2 align-items-center">
-				<input class="form-control" style="max-width: 520px;" type="file" name="file" accept=".xlsx">
+				<input class="form-control" style="max-width: 520px;" type="file" name="file" accept=".xlsx,.csv">
 				<button class="btn btn-primary" type="submit">DB에 적용</button>
 			</div>
 			<div class="form-text">파일을 다시 선택하지 않으면, 마지막 미리보기 업로드 파일로 적용합니다.</div>

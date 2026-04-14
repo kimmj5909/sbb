@@ -1,5 +1,53 @@
 # 변경 이력
 
+## 2026-03-03
+- ELK(Filebeat+Logstash+Elasticsearch+Kibana) 설치 및 SBB 로그 연동 매뉴얼 문서(`docs/elk-manual.md`)를 추가.
+
+## 2026-02-26
+- 인천광역시 법정동 개편(시행일 2026-07-01) 사전 검증을 위해, 변경 상세내역 엑셀(`행정기관(행정동) 및 관할구역(법정동) 변경 상세내역(인천광역시).xlsx`)에서 구/신 법정동코드 재배치 매핑을 추출하는 스크립트(`scripts/incheon_20260701_extract_mapping.py`, KIKmix 8컬럼 델타 CSV 산출 포함)와, SBB stage 테이블(`tb_legal_dong_stage_l`)에 past_legal_dong_cd를 일괄 반영하는 psql 스크립트(`scripts/incheon_20260701_past_mapping_apply_stage.sql`), stage 업서트 스크립트(`scripts/legal_dong_upsert_from_csv_stage.sql`), KIKmix xlsx→8컬럼 CSV 변환 스크립트(`scripts/kikmix_xlsx_to_8cols_csv.py`), 관리자 마이그레이션 화면의 csv 업로드 지원 및 테스트 가이드(`legal_dong_incheon_20260701.md`)를 추가.
+- Windows Excel에서 UTF-8 CSV를 ANSI로 오인해 한글이 깨지는 현상을 완화하기 위해, 인천 매핑/델타 CSV 및 KIKmix xlsx→csv 변환 스크립트 출력에 UTF-8 BOM을 기본 포함하도록 보강.
+
+## 2026-02-09
+- HTTP 요청 로깅 인터셉터(RequestLoggingInterceptor)가 생성하는 구조화 로그(HttpLogEvent)를 JSONL 파일로 저장할 수 있도록 `sbb.http-log.enabled`, `sbb.http-log.file` 설정과 파일 저장 로직을 추가해, Filebeat 기반 파이프라인(→Redis→Logstash→Elasticsearch)으로 적재하는 구성을 지원.
+
+## 2026-02-03
+- /etc 하위 Elasticsearch/Kibana/Filebeat/Logstash 설정을 기준으로, 애플리케이션 ELK 기본 접속 대상 값을 `localhost:9200`(Elasticsearch) / `localhost:5601`(Kibana)로 정리하고 `application.properties`에 문서화.
+- Elasticsearch 보안(xpack security) 활성화 환경을 전제로, ES 인증 정보는 `ELASTIC_USERNAME`/`ELASTIC_PASSWORD` 환경변수로 주입하도록 변경해 소스 내 비밀번호 하드코딩을 제거.
+- Elasticsearch 인증 방식으로 ApiKey(`ELASTIC_API_KEY`)를 추가 지원하고, 설정 시 BasicAuth보다 우선 적용되도록 RestClient 구성을 보강.
+- Filebeat 수집을 고려해 애플리케이션 로그 파일 경로를 `logging.file.name`으로 노출하고, 필요 시 `SBB_LOG_FILE`로 `/var/log/*.log` 패턴에 맞춰 오버라이드할 수 있도록 안내 설정을 추가.
+- `localhost` 해석/포워딩(IPv6 ::1, WSL localhost forwarding 등) 환경 차이가 있어, Elasticsearch 기본 접속 값은 `localhost:9200`으로 유지하고 필요 시 `ELASTIC_HOSTS`로 오버라이드하도록 안내를 추가.
+- `LogSearchService`의 기간(range) 필터 빌더가 elasticsearch-java 클라이언트 버전에 따라 컴파일 오류가 날 수 있어, 쿼리 JSON 기반으로 고정해 빌드/IDE 환경 차이에 덜 민감하도록 수정.
+
+## 2026-01-29
+- 행정안전부(MOIS) "법정동 변경내역 알림" 게시판을 등록일 기준으로 모니터링하고(오늘-1일~오늘), 게시글 번호(nttId) 작업 이력으로 중복 처리를 방지하며, 신규 게시물의 첨부파일을 `{downloadBaseDir}/{게시물번호}_{YYYYMMDD}/` 하위에 자동 다운로드하는 스케줄러(기본 매일 16:00)와 실행 로그(성공/실패/변동없음) 적재를 추가.
+- MOIS 법정동 변경내역 첨부파일 다운로드 기본 경로를 `C:\\Users\\kfca\\Desktop\\legal`로 변경.
+- MOIS 게시판 최신 게시물 1건의 첨부파일을 수동 다운로드할 수 있도록 `./gradlew moisDownloadLatest` 실행 태스크와 점검용 Main을 추가.
+- WSL/Linux 환경에서도 Windows 경로(`X:\\...`)가 의도한 위치(`/mnt/x/...`)로 저장되도록 다운로드 경로 해석을 보강하고, 깨진 Content-Disposition 파일명 대신 링크 텍스트 기반 파일명을 우선 사용하도록 개선.
+- MOIS 첨부 링크 텍스트에 포함된 용량 표기(예: `파일명.ext [ 59.6 KB ]`)를 제거해, 확장자 뒤에 불필요한 문자열이 붙지 않도록 파일명 정규화를 보강.
+
+## 2026-01-16
+- 법정동 마이그레이션 미리보기에서 스냅샷 저장 시 `unnest()`에 코드 리스트가 개별 파라미터로 확장되어 PostgreSQL 함수 인자 100개 제한에 걸리던 문제를, SQL ARRAY(단일 파라미터)로 바인딩하도록 수정해 500 오류를 방지.
+- `LegalDongMigrationService` 생성자 의존성 확장에 맞춰 `src/test` 단위 테스트가 컴파일되도록 생성자 인자를 보강.
+- HTTP 요청 로깅 인터셉터에서 사용자 조회/Elasticsearch 적재를 동기 처리해 화면 응답이 지연될 수 있던 문제를, user DB 조회 제거 및 ES 적재 비동기 실행기로 분리해(업무 트래픽 비차단) 개선.
+- `/admin/legal-dong/search` DB 검색 SQL 생성 시 문자열 결합과 `formatted()` 적용 순서 문제로 `FROM %s`가 그대로 남아 실행되던 문법 오류를 수정.
+- `scripts/1_legal_dong_migrate_from_server_csv_proc.sql`에서 기존 `sp_legal_dong_migrate_from_server_csv`는 유지하고, `sp_legal_dong_migrate_from_server_csv2`에 서버-side `COPY` 적재 시 인코딩(UTF8/WIN949)·구분자(콤마/TAB) 조합을 순차 재시도하며, 일부 엑셀/내보내기 파일에서 행 전체가 큰따옴표로 감싸져 포맷 오류가 나는 케이스는 QUOTE 문자를 단일 따옴표로 변경(사실상 quoting 비활성)해 재시도하도록 보강하고, 적재 후 전체 컬럼의 BOM/큰따옴표를 제거하도록 정리했으며, 실제 사용한 인코딩/구분자/QUOTE 설정을 NOTICE로 출력해 원인 분리를 지원.
+- `scripts/2_legal_dong_migrate_from_temp_proc.sql`에 주소 정규화 기반 스테이징 매핑(`pg_temp.tmp_legal_dong_past_map_stage`)을 추가해, 운영 테이블에 `dlt_dt` 스냅샷이 없어도 스테이징에서 계산한 과거코드(`would_set_past_cd`)와 rank(`would_set_rank`)를 신규 코드에 반영(`past_legal_dong_cd/rank` 업데이트)하고 카운트를 `pg_temp.tmp_legal_dong_migrate_result`로 확인 가능하도록 개선.
+- `scripts/2_legal_dong_migrate_from_temp_proc.sql`의 읍면동 past 매핑 후보군에서 시군구 레벨(읍면동 000) 코드(예: `4159000000`)를 제외해, `새솔동`처럼 기존 과거 읍면동이 없는 케이스에서 past가 시군구 코드로 잘못 설정되는 오매핑을 방지.
+- `scripts/2_legal_dong_migrate_from_temp_proc.sql`에서 입력 CSV에 시군구 레벨 코드(sgng_cd||`00000`)가 누락된 경우를 대비해, `...구`로 끝나는 시군구(`sgng_nm`)에 한해 시군구 레벨 행을 추가 생성해 업서트 대상에 포함시켜(예: `화성시 만세구/효행구/병점구/동탄구`) 누락을 방지.
+- `scripts/2_legal_dong_migrate_from_temp_proc.sql`에서 `...구` 시군구의 sgng_cd||`00000` 레벨 코드를 스테이징 코드 목록(`tmp_legal_dong_migrate_stage_codes`)에도 자동 포함시켜, 미리보기/스테이징 조회에서 시군구 레벨 행이 누락된 것처럼 보이는 혼선을 줄임.
+- `scripts/2_legal_dong_migrate_from_temp_proc.sql`의 주소 정규화 매핑 대상에 `리`까지 포함되도록, 신규/기존 매핑 후보를 `(동|리)$`로 끝나는 주소만 대상으로 필터링.
+- `scripts/2_legal_dong_migrate_from_temp_proc.sql`에서 `UPDATE ... FROM` 구문 내 JOIN 조건에서 타깃 테이블 별칭을 참조해 발생하던 오류(42P01)를 방지하도록, JOIN 조건을 WHERE 절로 이동해 PostgreSQL 11.5에서 정상 실행되도록 수정.
+- `scripts/2_legal_dong_migrate_from_temp_proc.sql`의 주소 정규화 매핑에서 신규/기존 분리 기준을 테스트 쿼리와 동일하게(`new: legal_dong_nm LIKE '%구 %'`, `old: NOT LIKE '%구 %'`) 적용하고, 매핑 대상 범위를 입력 스테이징 코드(`tmp_legal_dong_migrate_stage_codes`)로 한정해 미리보기 결과와 일치하도록 정리.
+- `scripts/2_legal_dong_migrate_from_temp_proc.sql`의 주소 정규화 매핑에서 신규/기존 분리 조건을 공백 유무에 영향받지 않도록 `...구` 정규식 기반(`~ '[가-힣]+구'`)으로 보강하고, 과거 후보(old)는 스테이징 범위로 제한하지 않도록 조정해 매핑 누락을 줄임.
+- `scripts/2_legal_dong_migrate_from_temp_proc.sql`의 주소 정규화 매핑을 스테이징 범위 내부에서만(new/old 모두 `tmp_legal_dong_migrate_stage_codes`) 수행하도록 재정리해, 테스트 쿼리에서 확인된 매핑 건수(예: 194건)와 프로시저 반영 건수 차이를 줄임.
+- `scripts/2_legal_dong_migrate_from_temp_proc.sql` 미리보기 모드에서 디버깅을 위해 `pg_temp.tmp_legal_dong_migrate_stage_codes` TEMP 테이블을 세션에 유지하도록 정리.
+- `scripts/2_legal_dong_migrate_from_temp_proc.sql`의 주소 정규화 기반 past 매핑에서 신규(new)는 스테이징 코드로 제한하되, 과거 후보(old)는 운영 테이블 전체에서 찾도록 조정해(입력 CSV가 신규 코드만 포함하는 케이스 대응) 매핑 누락(0건)을 줄임.
+- `scripts/2_legal_dong_migrate_from_temp_proc.sql`의 past 매핑(시행일 기반/주소 정규화 기반)에서 `past_legal_dong_cd`가 NULL이 아닌 공백/특수문자(비숫자) 혼입으로 "사실상 미설정"인 케이스를 숫자만 남겨 판정해 동일하게 처리하고, 주소 정규화 후보 선택 시 `신규 cr_dt = 과거 dlt_dt` 시행일 연결을 우선하며, 주소 정규화 문자열은 유니코드 공백(NBSP/ZWSP)까지 흡수하도록 "한글/숫자만 남김" 방식으로 보강하고 `...구` 제거 정규식의 그리디 매칭으로 주소 앞부분이 통째로 제거되는 문제를 `시/군 + 구` 패턴만 제거하도록 수정해 체인 연결 누락을 방지.
+- 법정동 관리자 기능(검색/마이그레이션)의 기준 테이블을 `tb_legal_dong_stage_l`로 분리하고, 기동 시 스키마 초기화 DDL에 `lock_timeout/statement_timeout` 및 실행 시간 로그를 추가해 DDL 락 대기 시 무한 멈춤처럼 보이는 문제를 빠르게 식별 가능하도록 개선.
+
+## 2026-01-15
+- `scripts/2_legal_dong_migrate_from_temp_proc.sql`에서 관리자 화면에서 입력된 과거법정동코드(`past_legal_dong_cd`)를 매핑 체인에 반영하고, 과거코드의 `rank`를 신규 코드에 그대로 적용하도록 보강(행정동 혼입 정규화 로직은 유지).
+
 ## 2026-01-09
 - 마이그레이션 미리보기에서 DB 스냅샷 대비 `cr_dt(LEAST)`/`dlt_dt(GREATEST)` 갱신 필요 여부를 셀 단위로 표시해, 일자 정합성(누락/오입력) 확인을 강화.
 - 미리보기 CSV 다운로드의 한글 깨짐/파일명 깨짐을 줄이기 위해 UTF-8 BOM, `filename*` 헤더, `text/plain;charset=UTF-8` 응답을 적용.

@@ -227,7 +227,8 @@ public class LegalDongPastMappingJdbcRepository {
 					(SELECT missing_cnt FROM li_missing_old) AS li_missing_old_cnt
 				""";
 
-		return jdbcTemplate.queryForObject(sql, params, (rs, rowNum) -> new Stats(
+		String formattedSql = sql.replace("tb_legal_dong_l", LegalDongTables.LEGAL_DONG_TABLE);
+		return jdbcTemplate.queryForObject(formattedSql, params, (rs, rowNum) -> new Stats(
 				rs.getInt("old_emndn_cnt"),
 				rs.getInt("new_emndn_cnt"),
 				rs.getInt("emndn_ambiguous_cnt"),
@@ -343,7 +344,7 @@ public class LegalDongPastMappingJdbcRepository {
 				  AND t.past_legal_dong_cd IS NULL
 				""";
 
-		return jdbcTemplate.update(sql, params);
+		return jdbcTemplate.update(sql.replace("tb_legal_dong_l", LegalDongTables.LEGAL_DONG_TABLE), params);
 	}
 
 	private int updateLi(Map<String, Object> params) {
@@ -478,7 +479,7 @@ public class LegalDongPastMappingJdbcRepository {
 				  AND t.past_legal_dong_cd IS NULL
 				""";
 
-		return jdbcTemplate.update(sql, params);
+		return jdbcTemplate.update(sql.replace("tb_legal_dong_l", LegalDongTables.LEGAL_DONG_TABLE), params);
 	}
 
 	private record Stats(

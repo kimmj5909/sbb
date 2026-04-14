@@ -17,6 +17,12 @@ public class LogSearchProperties {
 	private int socketTimeoutMs = 5000;
 	private String username;
 	private String password;
+	/**
+	 * Elasticsearch API Key 인증 값(Base64 인코딩된 token 문자열).
+	 * - 설정되면 username/password(BasicAuth)보다 우선한다.
+	 * - 일반적으로 "ApiKey {apiKey}" 형태로 Authorization 헤더에 실린다.
+	 */
+	private String apiKey;
 
 	public String getHosts() {
 		return hosts;
@@ -79,5 +85,13 @@ public class LogSearchProperties {
 
 	public void setPassword(String password) {
 		this.password = password;
+	}
+
+	public String getApiKey() {
+		return apiKey;
+	}
+
+	public void setApiKey(String apiKey) {
+		this.apiKey = apiKey;
 	}
 }

@@ -15,16 +15,23 @@ import org.junit.jupiter.api.Test;
  * - DB 업서트는 별도 통합 테스트가 필요하므로 여기서는 preview(파싱+파생)만 검증한다.
  * - 엑셀 셀 서식 차이(숫자/문자)를 흉내 내기 위해 숫자 값도 함께 넣는다.
  */
-public class LegalDongMigrationServiceTests {
+public class  LegalDongMigrationServiceTests {
 
 	@Test
 	void shouldDeriveUnitsAndRanks_whenPreviewingXlsx() throws Exception {
 		byte[] xlsx = createSampleWorkbook();
 
 		LegalDongExcelParser parser = new LegalDongExcelParser();
+		/*
+		 * preview()는 엑셀 파싱/파생 로직만 사용하므로, DB 연동 컴포넌트는 null로 둔다.
+		 * (LegalDongMigrationService의 생성자 파라미터가 늘어도, 이 테스트의 목적은 규칙 고정이므로
+		 *  불필요한 DB 의존성을 끌어오지 않는다.)
+		 */
 		LegalDongMigrationService service = new LegalDongMigrationService(
 				parser,
+				new LegalDongCsvParser(),
 				new LegalDongJdbcUpsertRepository(null),
+				null,
 				null,
 				null);
 

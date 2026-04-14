@@ -13,7 +13,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "tb_legal_dong_l")
+@Table(name = LegalDongTables.LEGAL_DONG_TABLE)
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -21,7 +21,7 @@ import lombok.NoArgsConstructor;
  * 법정동 코드(법정동/읍면동/시군구/시도) 정보를 저장하는 엔티티.
  *
  * 담당 역할
- * - 테스트/운영 DB의 기준 테이블 `tb_legal_dong_l`에 매핑된다.
+ * - 테스트/운영 DB의 기준 테이블({@link LegalDongTables#LEGAL_DONG_TABLE})에 매핑된다.
  * - 마이그레이션 업서트 결과를 JPA로 조회하거나, 향후 API/화면 확장 시 재사용한다.
  *
  * 요구사항 포인트

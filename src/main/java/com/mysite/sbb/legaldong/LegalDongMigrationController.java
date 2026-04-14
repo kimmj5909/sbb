@@ -13,6 +13,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -40,14 +42,26 @@ import lombok.RequiredArgsConstructor;
  */
 public class LegalDongMigrationController {
 
+	private static final Logger log = LoggerFactory.getLogger(LegalDongMigrationController.class);
+
 	private static final String SESSION_KEY_PREVIEW_BYTES = "legalDongMigrationPreviewBytes";
 	private static final String SESSION_KEY_PREVIEW_FILENAME = "legalDongMigrationPreviewFileName";
 	private static final String SESSION_KEY_LAST_RUN_ID = "legalDongMigrationLastRunId";
+	private static final String SESSION_KEY_PREVIEW_CACHE = "legalDongMigrationPreviewCache";
 	private static final java.time.format.DateTimeFormatter YYYYMMDD = java.time.format.DateTimeFormatter.BASIC_ISO_DATE;
 
 	private final LegalDongMigrationService migrationService;
 	private final LegalDongJdbcSnapshotRepository snapshotRepository;
 	private final LegalDongMigrationRunRepository migrationRunRepository;
+
+	private record PreviewCache(
+			int totalRows,
+			int derivedRows,
+			int upperRows,
+			int lowerRows,
+			List<String> errors,
+			List<LegalDongDerivedRow> entries) {
+	}
 
 	@GetMapping("/migration")
 	public String migrationPage() {
@@ -61,23 +75,60 @@ public class LegalDongMigrationController {
 			Model model,
 			HttpSession session,
 			RedirectAttributes redirectAttributes) {
-		byte[] bytes = (byte[]) session.getAttribute(SESSION_KEY_PREVIEW_BYTES);
-		if (bytes == null || bytes.length == 0) {
-			redirectAttributes.addFlashAttribute("adminMessage", "미리보기 데이터가 없습니다. 엑셀 파일을 다시 업로드하세요.");
-			return "redirect:/admin/legal-dong/migration";
-		}
-
+		long started = System.nanoTime();
 		String fileName = (String) session.getAttribute(SESSION_KEY_PREVIEW_FILENAME);
 		int resolvedSize = resolvePreviewSize(size);
-		LegalDongMigrationPreviewResult preview = migrationService.preview(bytes, page, resolvedSize);
+
+		PreviewCache cache = (PreviewCache) session.getAttribute(SESSION_KEY_PREVIEW_CACHE);
+		if (cache == null || cache.entries == null || cache.entries.isEmpty()) {
+			byte[] bytes = (byte[]) session.getAttribute(SESSION_KEY_PREVIEW_BYTES);
+			if (bytes == null || bytes.length == 0) {
+				redirectAttributes.addFlashAttribute("adminMessage", "미리보기 데이터가 없습니다. 엑셀 파일을 다시 업로드하세요.");
+				log.info("[legaldong-migration][preview] redirect(no session bytes) page={}, size={}", page, resolvedSize);
+				return "redirect:/admin/legal-dong/migration";
+			}
+
+			long t0 = System.nanoTime();
+			// 미리보기는 페이징 이동이 있을 수 있어, 매 요청마다 엑셀을 재파싱하지 않도록
+			// 최초 1회만 전체 파생 결과를 만들어 세션에 캐시한다.
+			LegalDongMigrationPreviewResult all = migrationService.preview(bytes, fileName, 0, Integer.MAX_VALUE);
+			long t1 = System.nanoTime();
+			cache = new PreviewCache(
+					all.getTotalRows(),
+					all.getDerivedRows(),
+					all.getUpperRows(),
+					all.getLowerRows(),
+					all.getErrors(),
+					all.getEntries());
+			session.setAttribute(SESSION_KEY_PREVIEW_CACHE, cache);
+			log.info("[legaldong-migration][preview] cache_miss parsed fileName={}, bytes={}, derivedRows={}, tookMs={}",
+					fileName, bytes.length, all.getDerivedRows(), (t1 - t0) / 1_000_000);
+		}
+
+		long sliceStarted = System.nanoTime();
+		LegalDongMigrationPreviewResult preview = buildPreviewFromCache(cache, page, resolvedSize);
+		long sliceEnded = System.nanoTime();
 		model.addAttribute("preview", preview);
 		model.addAttribute("fileName", fileName != null ? fileName : "(업로드 파일)");
 		model.addAttribute("pageNumbers", buildPageNumbers(preview));
 		model.addAttribute("sizeOptions", List.of(50, 200, 400));
+
+		long pastStarted = System.nanoTime();
 		model.addAttribute("pastByCode", buildPastByCode(preview.getEntries()));
+		long pastEnded = System.nanoTime();
 		// 미리보기에서 "생성/말소일자 정합성"을 함께 확인할 수 있도록,
 		// DB 스냅샷 기준으로 이번 업로드로 cr_dt(LEAST) / dlt_dt(GREATEST)가 갱신될지 여부를 계산해 내려준다.
+		long dateStarted = System.nanoTime();
 		model.addAttribute("dateStatusByCode", buildDateStatusByCode(preview.getEntries()));
+		long dateEnded = System.nanoTime();
+
+		long ended = System.nanoTime();
+		log.info("[legaldong-migration][preview] page={}, size={}, entries={}, sliceMs={}, pastMs={}, dateMs={}, totalMs={}",
+				preview.getPage(), preview.getSize(), preview.getEntries() == null ? 0 : preview.getEntries().size(),
+				(sliceEnded - sliceStarted) / 1_000_000,
+				(pastEnded - pastStarted) / 1_000_000,
+				(dateEnded - dateStarted) / 1_000_000,
+				(ended - started) / 1_000_000);
 		return "admin/legal_dong_migration";
 	}
 
@@ -204,21 +255,19 @@ public class LegalDongMigrationController {
 	 */
 	@GetMapping("/migration/preview/csv")
 	public ResponseEntity<byte[]> downloadPreviewCsv(HttpSession session) {
-		byte[] bytes = (byte[]) session.getAttribute(SESSION_KEY_PREVIEW_BYTES);
-		if (bytes == null || bytes.length == 0) {
+		PreviewCache cache = (PreviewCache) session.getAttribute(SESSION_KEY_PREVIEW_CACHE);
+		if (cache == null || cache.entries == null || cache.entries.isEmpty()) {
 			return ResponseEntity.badRequest()
 					.contentType(new MediaType("text", "plain", StandardCharsets.UTF_8))
 					.body("미리보기 데이터가 없습니다. 엑셀 파일을 먼저 업로드하세요.".getBytes(StandardCharsets.UTF_8));
 		}
-
-		LegalDongMigrationPreviewResult preview = migrationService.preview(bytes, 0, Integer.MAX_VALUE);
 		String originalFileName = (String) session.getAttribute(SESSION_KEY_PREVIEW_FILENAME);
 		String csvFileName = toCsvFileName(originalFileName != null ? originalFileName : "legal_dong_migration.xlsx");
 
 		StringBuilder csv = new StringBuilder(1024);
 		// 경고가 있으면 CSV 상단에 주석 라인으로 포함한다(엑셀/psql 적재에는 영향 없음).
-		if (preview.getErrors() != null && preview.getErrors().isEmpty() == false) {
-			for (String e : preview.getErrors()) {
+		if (cache.errors != null && cache.errors.isEmpty() == false) {
+			for (String e : cache.errors) {
 				if (e == null || e.isBlank()) {
 					continue;
 				}
@@ -226,7 +275,7 @@ public class LegalDongMigrationController {
 			}
 		}
 		csv.append("legal_dong_cd,legal_dong_nm,ctprv_cd,ctprv_nm,sgng_cd,sgng_nm,emndn_cd,emndn_nm,li_cd,li_nm,rank,cr_dt,dlt_dt\r\n");
-		for (LegalDongDerivedRow row : preview.getEntries()) {
+		for (LegalDongDerivedRow row : cache.entries) {
 			appendCsvRow(csv, row);
 			csv.append("\r\n");
 		}
@@ -247,6 +296,7 @@ public class LegalDongMigrationController {
 	@PostMapping("/migration/preview")
 	public String preview(@RequestParam(value = "file", required = false) MultipartFile file, HttpSession session,
 			RedirectAttributes redirectAttributes) {
+		long started = System.nanoTime();
 		byte[] bytes = readFileBytes(file, redirectAttributes);
 		if (bytes == null) {
 			return "redirect:/admin/legal-dong/migration";
@@ -254,6 +304,20 @@ public class LegalDongMigrationController {
 
 		session.setAttribute(SESSION_KEY_PREVIEW_BYTES, bytes);
 		session.setAttribute(SESSION_KEY_PREVIEW_FILENAME, file.getOriginalFilename());
+		// 업로드 직후 1회 파싱/파생 결과를 캐시해, 미리보기 페이징 이동 시 재파싱 비용을 제거한다.
+		LegalDongMigrationPreviewResult all = migrationService.preview(bytes, file.getOriginalFilename(), 0, Integer.MAX_VALUE);
+		PreviewCache cache = new PreviewCache(
+				all.getTotalRows(),
+				all.getDerivedRows(),
+				all.getUpperRows(),
+				all.getLowerRows(),
+				all.getErrors(),
+				all.getEntries());
+		session.setAttribute(SESSION_KEY_PREVIEW_CACHE, cache);
+		long ended = System.nanoTime();
+		log.info("[legaldong-migration][preview-upload] fileName={}, bytes={}, derivedRows={}, tookMs={}",
+				file.getOriginalFilename(), bytes.length, all.getDerivedRows(), (ended - started) / 1_000_000);
+
 		return "redirect:/admin/legal-dong/migration/preview?page=0";
 	}
 
@@ -285,7 +349,30 @@ public class LegalDongMigrationController {
 		model.addAttribute("fileName", fileName != null ? fileName : "(업로드 파일)");
 		session.removeAttribute(SESSION_KEY_PREVIEW_BYTES);
 		session.removeAttribute(SESSION_KEY_PREVIEW_FILENAME);
+		session.removeAttribute(SESSION_KEY_PREVIEW_CACHE);
 		return "admin/legal_dong_migration";
+	}
+
+	private LegalDongMigrationPreviewResult buildPreviewFromCache(PreviewCache cache, int page, int size) {
+		int resolvedSize = size > 0 ? size : 50;
+		int resolvedPage = Math.max(page, 0);
+		int totalPages = (int) Math.ceil((double) cache.entries.size() / (double) resolvedSize);
+		int safeTotalPages = Math.max(totalPages, 1);
+		int boundedPage = Math.min(resolvedPage, safeTotalPages - 1);
+		int fromIndex = boundedPage * resolvedSize;
+		int toIndex = Math.min(fromIndex + resolvedSize, cache.entries.size());
+		List<LegalDongDerivedRow> pageEntries = fromIndex >= toIndex ? List.of() : cache.entries.subList(fromIndex, toIndex);
+
+		return new LegalDongMigrationPreviewResult(
+				cache.totalRows,
+				cache.derivedRows,
+				cache.upperRows,
+				cache.lowerRows,
+				boundedPage,
+				resolvedSize,
+				totalPages,
+				cache.errors,
+				pageEntries);
 	}
 
 	@PostMapping("/migration/rollback")
@@ -323,12 +410,12 @@ public class LegalDongMigrationController {
 
 	private byte[] readFileBytes(MultipartFile file, RedirectAttributes redirectAttributes) {
 		if (file == null || file.isEmpty()) {
-			redirectAttributes.addFlashAttribute("adminMessage", "업로드할 엑셀 파일(xlsx)을 선택하세요.");
+			redirectAttributes.addFlashAttribute("adminMessage", "업로드할 파일(xlsx/csv)을 선택하세요.");
 			return null;
 		}
 		String filename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase();
-		if (filename.endsWith(".xlsx") == false) {
-			redirectAttributes.addFlashAttribute("adminMessage", "xlsx 파일만 업로드할 수 있습니다.");
+		if (filename.endsWith(".xlsx") == false && filename.endsWith(".csv") == false) {
+			redirectAttributes.addFlashAttribute("adminMessage", "xlsx 또는 csv 파일만 업로드할 수 있습니다.");
 			return null;
 		}
 		try {
@@ -396,6 +483,9 @@ public class LegalDongMigrationController {
 		String base = originalFileName.replace("\\", "_").replace("/", "_");
 		if (base.toLowerCase().endsWith(".xlsx")) {
 			base = base.substring(0, base.length() - 5);
+		}
+		if (base.toLowerCase().endsWith(".csv")) {
+			base = base.substring(0, base.length() - 4);
 		}
 		return base + ".derived.csv";
 	}

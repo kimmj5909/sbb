@@ -13,9 +13,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
 
-import com.mysite.sbb.user.SiteUser;
-import com.mysite.sbb.user.UserRepository;
-
 /**
  * HTTP 요청/응답 정보를 가로채 Elasticsearch에 전달하는 인터셉터.
  * - preHandle: 요청 시작 시각/traceId를 심는다.
@@ -27,12 +24,10 @@ public class RequestLoggingInterceptor implements HandlerInterceptor {
 	private static final String ATTR_TRACE = RequestLoggingInterceptor.class.getName() + ".traceId";
 
 	private final LogIngestService ingestService;
-	private final UserRepository userRepository;
 	private final String serviceName;
 
-	public RequestLoggingInterceptor(LogIngestService ingestService, UserRepository userRepository, String serviceName) {
+	public RequestLoggingInterceptor(LogIngestService ingestService, String serviceName) {
 		this.ingestService = ingestService;
-		this.userRepository = userRepository;
 		this.serviceName = serviceName;
 	}
 
@@ -102,9 +97,14 @@ public class RequestLoggingInterceptor implements HandlerInterceptor {
 		if (!StringUtils.hasText(name) || "anonymousUser".equalsIgnoreCase(name)) {
 			return null;
 		}
-		return userRepository.findByUsername(name)
-			.map(SiteUser::getUsername)
-			.orElse(name);
+		/*
+		 * 중요: 요청 로깅은 "업무 처리"를 절대 지연시키면 안 된다.
+		 * - 여기서 DB 조회(findByUsername)를 수행하면, 뷰 렌더링 이후(afterCompletion)에도 추가 쿼리가 발생하고
+		 *   DB 지연/락/커넥션 고갈 상황에서 화면이 "계속 로딩"처럼 보일 수 있다.
+		 * - Spring Security의 Authentication#getName()은 현재 구현(UserSecurityService)에서 username을 사용하므로
+		 *   DB 조회 없이도 충분히 식별 가능하다.
+		 */
+		return name;
 	}
 
 	private String resolveClientIp(HttpServletRequest request) {

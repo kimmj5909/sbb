@@ -16,7 +16,7 @@ import lombok.RequiredArgsConstructor;
  *
  * 변경 배경
  * - Elasticsearch 기반 검색은 "재색인" 작업이 필요해 운영/관리 측면에서 번거롭다.
- * - 요구사항: `tb_legal_dong_l` 테이블을 직접 조회해 최신 데이터를 즉시 화면에 반영한다.
+ * - 요구사항: {@link LegalDongTables#LEGAL_DONG_TABLE} 테이블을 직접 조회해 최신 데이터를 즉시 화면에 반영한다.
  *
  * 구현 포인트
  * - 화면 UX는 기존과 동일하게 "조건 선택 + 키워드 + 날짜범위"를 유지한다.
@@ -81,11 +81,17 @@ public class LegalDongDbSearchService {
 		}
 
 		String countSql() {
-			return "SELECT COUNT(*) FROM tb_legal_dong_l " + whereSql;
+			return ("SELECT COUNT(*) FROM " + LegalDongTables.LEGAL_DONG_TABLE + " " + whereSql);
 		}
 
 		String selectSql() {
-			return """
+			/*
+			 * 중요: String#formatted()는 "호출된 문자열 1개"에만 적용된다.
+			 * - 아래처럼 텍스트 블록을 + 로 붙인 뒤 마지막 블록에만 formatted()를 호출하면,
+			 *   앞 블록의 `%s`가 그대로 남아 "FROM %s" 형태의 잘못된 SQL이 실행될 수 있다.
+			 * - 따라서 전체 SQL을 하나의 문자열로 합친 뒤, 그 결과에 formatted()를 적용한다.
+			 */
+			return ("""
 					SELECT
 						legal_dong_cd,
 						legal_dong_nm,
@@ -106,11 +112,11 @@ public class LegalDongDbSearchService {
 						END AS dlt_dt,
 						past_legal_dong_cd,
 						use_yn
-					FROM tb_legal_dong_l
+					FROM %s
 					""" + whereSql + """
 					ORDER BY legal_dong_cd
 					LIMIT :limit OFFSET :offset
-					""";
+					""").formatted(LegalDongTables.LEGAL_DONG_TABLE);
 		}
 
 		private static void applyKeyword(LegalDongSearchRequest request, StringBuilder where, MapSqlParameterSource params) {

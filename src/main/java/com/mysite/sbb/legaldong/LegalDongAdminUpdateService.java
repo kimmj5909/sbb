@@ -43,7 +43,7 @@ public class LegalDongAdminUpdateService {
 		String normalizedOperatorId = StringUtils.hasText(operatorId) ? operatorId.trim() : "SYSTEM";
 
 		String sql = """
-				UPDATE tb_legal_dong_l
+				UPDATE %s
 				SET
 					past_legal_dong_cd = :pastLegalDongCd,
 					dlt_dt = :dltDt,
@@ -51,7 +51,7 @@ public class LegalDongAdminUpdateService {
 					last_updt_dtm = :now,
 					last_upusr_id = :operatorId
 				WHERE legal_dong_cd = :legalDongCd
-				""";
+				""".formatted(LegalDongTables.LEGAL_DONG_TABLE);
 
 		MapSqlParameterSource params = new MapSqlParameterSource()
 				.addValue("pastLegalDongCd", normalizedPastCd)
@@ -99,4 +99,3 @@ public class LegalDongAdminUpdateService {
 		return digits;
 	}
 }
-
